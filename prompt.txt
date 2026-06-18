@@ -1,0 +1,1529 @@
+╔══════════════════════════════════════════════════════════════════════╗
+║         CROPWISE AI — FRONTEND MASTER PROMPT (PRODUCTION)           ║
+║         Stack: React + Vite + JavaScript ONLY                        ║
+║         NO TypeScript. NO Next.js. NO SSR. Pure React + Vite.       ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+═══════════════════════════════════════════════════════════
+SECTION 0 — STRICT TECHNOLOGY RULES (READ FIRST, NEVER BREAK)
+═══════════════════════════════════════════════════════════
+
+ALLOWED:
+  ✅ React 18 (plain JavaScript, .jsx files only)
+  ✅ Vite (bundler and dev server)
+  ✅ React Router DOM v6
+  ✅ Zustand (global state)
+  ✅ React Query / TanStack Query v5
+  ✅ Axios
+  ✅ Leaflet + react-leaflet
+  ✅ Chart.js + react-chartjs-2
+  ✅ Tailwind CSS v3
+  ✅ Node.js + Express (proxy server only)
+
+FORBIDDEN — if you use any of these, start over:
+  ❌ TypeScript (.ts or .tsx files) — use plain .js and .jsx only
+  ❌ Next.js — do not install it, do not use its routing or SSR
+  ❌ type annotations, interfaces, or generics of any kind
+  ❌ PropTypes (skip type checking entirely)
+  ❌ Redux or Redux Toolkit (use Zustand only)
+  ❌ Any CSS-in-JS library (styled-components, Emotion)
+  ❌ Any UI component library (MUI, Chakra, Ant Design, shadcn)
+  ❌ Any server-side rendering, getServerSideProps, or API routes
+  ❌ enum, type, interface keywords anywhere in any file
+
+FILE EXTENSIONS:
+  All React component files → .jsx
+  All utility/config/hook/store files → .js
+  Zero .ts or .tsx files anywhere in the project
+
+═══════════════════════════════════════════════════════════
+SECTION 1 — WHAT YOU ARE BUILDING
+═══════════════════════════════════════════════════════════
+
+You are building the complete, production-quality React frontend
+for CropWise AI — an AI-driven crop monitoring and irrigation
+advisory dashboard built for ISRO Hackathon Challenge 6.
+
+The ML models (crop classification, moisture stress detection,
+water deficit estimation, irrigation advisory) are ALREADY BUILT
+by a separate team and served through a FastAPI backend.
+
+YOUR RESPONSIBILITY IS ONLY:
+  - React frontend (UI, routing, components, pages) in plain JS
+  - A lightweight Node.js/Express proxy server for API security
+  - Connecting to the proxy using React Query + Axios
+  - Mock data for local development
+
+DO NOT BUILD:
+  - Any ML model, Python script, or inference logic
+  - Any FastAPI route or database query
+  - Any authentication system
+  - Advisory calculations, NDVI formulas, or stress thresholds
+    (those values come from the API — never compute them in frontend)
+
+═══════════════════════════════════════════════════════════
+SECTION 2 — PROJECT STRUCTURE
+═══════════════════════════════════════════════════════════
+
+Create this exact folder and file structure.
+Every file ending in .jsx or .js — nothing else.
+
+cropwise-ui/
+├── .env
+├── .env.example
+├── .gitignore
+├── index.html
+├── vite.config.js
+├── tailwind.config.js
+├── package.json
+│
+├── proxy-server/
+│   ├── index.js
+│   ├── .env
+│   ├── .env.example
+│   └── package.json
+│
+└── src/
+    ├── main.jsx
+    ├── App.jsx
+    ├── router.jsx
+    ├── index.css
+    │
+    ├── api/
+    │   ├── axiosInstance.js
+    │   ├── fieldsApi.js
+    │   ├── mapsApi.js
+    │   └── alertsApi.js
+    │
+    ├── store/
+    │   └── useAppStore.js
+    │
+    ├── hooks/
+    │   ├── useFieldData.js
+    │   ├── useMapLayer.js
+    │   └── useAlerts.js
+    │
+    ├── mocks/
+    │   ├── index.js
+    │   ├── mockTimeseries.js
+    │   ├── mockAdvisory.js
+    │   ├── mockAlerts.js
+    │   └── mockGeoJson.js
+    │
+    ├── components/
+    │   ├── layout/
+    │   │   ├── AppShell.jsx
+    │   │   ├── Sidebar.jsx
+    │   │   ├── TopBar.jsx
+    │   │   └── PageWrapper.jsx
+    │   │
+    │   ├── map/
+    │   │   ├── MapPanel.jsx
+    │   │   ├── FieldPolygon.jsx
+    │   │   ├── MapLegend.jsx
+    │   │   └── LayerToggle.jsx
+    │   │
+    │   ├── charts/
+    │   │   ├── NdviChart.jsx
+    │   │   ├── WaterBalanceChart.jsx
+    │   │   ├── StressIndexChart.jsx
+    │   │   └── ChartSkeleton.jsx
+    │   │
+    │   ├── advisory/
+    │   │   ├── AdvisoryCard.jsx
+    │   │   ├── StressMetrics.jsx
+    │   │   └── HealthBar.jsx
+    │   │
+    │   └── ui/
+    │       ├── Badge.jsx
+    │       ├── Skeleton.jsx
+    │       ├── AlertPill.jsx
+    │       └── Button.jsx
+    │
+    └── pages/
+        ├── Dashboard.jsx
+        ├── MapExplorer.jsx
+        ├── Analytics.jsx
+        ├── FieldDetail.jsx
+        └── Alerts.jsx
+
+═══════════════════════════════════════════════════════════
+SECTION 3 — INSTALL COMMANDS (run in this exact order)
+═══════════════════════════════════════════════════════════
+
+# Step 1 — scaffold with Vite React template (JavaScript, not TypeScript)
+npm create vite@latest cropwise-ui -- --template react
+cd cropwise-ui
+
+# Step 2 — remove any TypeScript files Vite may have generated
+# (the plain react template should not have them, but verify)
+# All files in src/ must be .jsx or .js only
+
+# Step 3 — install frontend dependencies
+npm install \
+  react-router-dom \
+  @tanstack/react-query \
+  axios \
+  zustand \
+  leaflet \
+  react-leaflet \
+  chart.js \
+  react-chartjs-2 \
+  tailwindcss \
+  @tailwindcss/vite \
+  concurrently
+
+# Step 4 — proxy server
+mkdir proxy-server
+cd proxy-server
+npm init -y
+npm install express http-proxy-middleware dotenv cors \
+            express-rate-limit helmet
+npm install -D nodemon
+cd ..
+
+# Step 5 — verify no TypeScript installed
+# package.json must NOT contain typescript, @types/*, or ts-node
+
+═══════════════════════════════════════════════════════════
+SECTION 4 — CONFIG FILES
+═══════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────
+vite.config.js
+─────────────────────────────────────────────────────────
+
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  server: {
+    port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+      },
+    },
+  },
+})
+
+─────────────────────────────────────────────────────────
+tailwind.config.js
+─────────────────────────────────────────────────────────
+
+export default {
+  content: ['./index.html', './src/**/*.{js,jsx}'],
+  theme: { extend: {} },
+  plugins: [],
+}
+
+─────────────────────────────────────────────────────────
+src/index.css
+─────────────────────────────────────────────────────────
+
+@import "tailwindcss";
+
+/* Leaflet fix — must be here so map tiles render correctly */
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  z-index: 0;
+}
+
+─────────────────────────────────────────────────────────
+.env.example  (root level — commit this)
+─────────────────────────────────────────────────────────
+
+VITE_API_BASE_URL=http://localhost:4000/api
+VITE_USE_MOCK=true
+
+─────────────────────────────────────────────────────────
+.gitignore
+─────────────────────────────────────────────────────────
+
+node_modules/
+dist/
+.env
+proxy-server/.env
+proxy-server/node_modules/
+.DS_Store
+*.log
+.vite/
+coverage/
+
+─────────────────────────────────────────────────────────
+package.json scripts section
+─────────────────────────────────────────────────────────
+
+"scripts": {
+  "dev":   "vite",
+  "build": "vite build",
+  "proxy": "cd proxy-server && node index.js",
+  "start": "concurrently \"npm run dev\" \"npm run proxy\""
+}
+
+═══════════════════════════════════════════════════════════
+SECTION 5 — SECURITY: PROXY SERVER
+═══════════════════════════════════════════════════════════
+
+The React app NEVER talks to FastAPI directly.
+The FastAPI URL lives ONLY in proxy-server/.env — never in src/.
+
+Flow:
+  Browser → localhost:5173 (Vite)
+          → /api/* (Vite proxy forwards silently)
+          → localhost:4000 (Express proxy)
+          → FastAPI backend (URL hidden from browser)
+
+─────────────────────────────────────────────────────────
+proxy-server/.env.example  (commit this, not .env)
+─────────────────────────────────────────────────────────
+
+BACKEND_URL=http://localhost:8000
+PROXY_PORT=4000
+ALLOWED_ORIGIN=http://localhost:5173
+INTERNAL_API_KEY=replace_with_long_random_string
+
+─────────────────────────────────────────────────────────
+proxy-server/index.js
+─────────────────────────────────────────────────────────
+
+require('dotenv').config()
+const express = require('express')
+const { createProxyMiddleware } = require('http-proxy-middleware')
+const rateLimit = require('express-rate-limit')
+const helmet = require('helmet')
+const cors = require('cors')
+
+const app = express()
+const BACKEND_URL = process.env.BACKEND_URL
+const PORT = process.env.PROXY_PORT || 4000
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'http://localhost:5173'
+
+if (!BACKEND_URL) {
+  console.error('FATAL: BACKEND_URL is not set in proxy-server/.env')
+  process.exit(1)
+}
+
+app.use(helmet())
+app.use(cors({ origin: ALLOWED_ORIGIN, credentials: true }))
+
+app.use('/api', rateLimit({
+  windowMs: 60 * 1000,
+  max: 200,
+  message: { error: 'Too many requests, slow down.' },
+}))
+
+app.use('/api', createProxyMiddleware({
+  target: BACKEND_URL,
+  changeOrigin: true,
+  pathRewrite: { '^/api': '' },
+  on: {
+    proxyReq: (proxyReq) => {
+      if (process.env.INTERNAL_API_KEY) {
+        proxyReq.setHeader('X-Internal-Key', process.env.INTERNAL_API_KEY)
+      }
+      proxyReq.removeHeader('x-forwarded-for')
+    },
+    error: (err, req, res) => {
+      console.error('Proxy error:', err.message)
+      res.status(502).json({ error: 'Backend unavailable' })
+    },
+  },
+}))
+
+app.get('/health', (req, res) => res.json({ status: 'ok' }))
+
+app.listen(PORT, () => {
+  console.log(`Proxy running on port ${PORT} → ${BACKEND_URL}`)
+})
+
+═══════════════════════════════════════════════════════════
+SECTION 6 — API LAYER (src/api/)
+═══════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────
+src/api/axiosInstance.js
+─────────────────────────────────────────────────────────
+
+import axios from 'axios'
+
+const baseURL = import.meta.env.VITE_API_BASE_URL || '/api'
+
+const axiosInstance = axios.create({
+  baseURL,
+  timeout: 15000,
+  headers: { 'Content-Type': 'application/json' },
+})
+
+axiosInstance.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    const message =
+      err.response?.data?.error ||
+      err.response?.data?.detail ||
+      'Something went wrong'
+    return Promise.reject(new Error(message))
+  }
+)
+
+export default axiosInstance
+
+─────────────────────────────────────────────────────────
+src/api/fieldsApi.js
+─────────────────────────────────────────────────────────
+
+import api from './axiosInstance'
+import { USE_MOCK, mockTimeseries, mockAdvisory } from '../mocks'
+
+export const getTimeseries = async (fieldId) => {
+  if (USE_MOCK) return mockTimeseries[fieldId] ?? mockTimeseries.default
+  const res = await api.get(`/fields/${fieldId}/timeseries`)
+  return res.data
+}
+
+export const getAdvisory = async (fieldId) => {
+  if (USE_MOCK) return mockAdvisory[fieldId] ?? mockAdvisory.default
+  const res = await api.get(`/fields/${fieldId}/advisory`)
+  return res.data
+}
+
+─────────────────────────────────────────────────────────
+src/api/mapsApi.js
+─────────────────────────────────────────────────────────
+
+import api from './axiosInstance'
+import { USE_MOCK, mockGeoJson } from '../mocks'
+
+export const getCropTypeLayer = async () => {
+  if (USE_MOCK) return mockGeoJson.cropType
+  const res = await api.get('/maps/crop-type')
+  return res.data
+}
+
+export const getStressLayer = async (date) => {
+  if (USE_MOCK) return mockGeoJson.stress
+  const res = await api.get(`/maps/stress?date=${date}`)
+  return res.data
+}
+
+export const getAdvisoryLayer = async (date) => {
+  if (USE_MOCK) return mockGeoJson.advisory
+  const res = await api.get(`/maps/advisory?date=${date}`)
+  return res.data
+}
+
+─────────────────────────────────────────────────────────
+src/api/alertsApi.js
+─────────────────────────────────────────────────────────
+
+import api from './axiosInstance'
+import { USE_MOCK, mockAlerts } from '../mocks'
+
+export const getAlerts = async () => {
+  if (USE_MOCK) return mockAlerts
+  const res = await api.get('/alerts')
+  return res.data
+}
+
+═══════════════════════════════════════════════════════════
+SECTION 7 — MOCK DATA (src/mocks/)
+═══════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────
+src/mocks/index.js
+─────────────────────────────────────────────────────────
+
+export const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
+
+export { mockTimeseries, mockAdvisory } from './mockTimeseries'
+export { mockAdvisory as mockAdvisoryData } from './mockAdvisory'
+export { mockGeoJson } from './mockGeoJson'
+export { mockAlerts } from './mockAlerts'
+
+─────────────────────────────────────────────────────────
+src/mocks/mockTimeseries.js
+─────────────────────────────────────────────────────────
+
+const buildTimeseries = (seed) => {
+  const base = new Date('2024-10-15')
+  const stages = ['Sowing', 'Vegetative', 'Flowering', 'Maturity']
+  const stressLevels = ['None', 'None', 'Mild', 'Moderate', 'Severe']
+
+  return Array.from({ length: 60 }, (_, i) => {
+    const d = new Date(base)
+    d.setDate(d.getDate() - (59 - i))
+    const t = i / 59
+    const ndvi = parseFloat(
+      (0.35 + 0.35 * Math.sin(Math.PI * t * seed) +
+       0.05 * Math.sin(t * 20)).toFixed(3)
+    )
+    const stressIndex = Math.min(4, Math.max(0,
+      Math.floor((1 - ndvi) * 4 + 0.4 * Math.sin(t * 15))
+    ))
+    return {
+      obs_date: d.toISOString().split('T')[0],
+      ndvi,
+      ndwi: parseFloat((ndvi * 0.6 + 0.05).toFixed(3)),
+      evi: parseFloat((ndvi * 0.85).toFixed(3)),
+      vv: parseFloat((-12 + 3 * Math.sin(t * Math.PI)).toFixed(2)),
+      vh: parseFloat((-18 + 2 * Math.sin(t * Math.PI * seed)).toFixed(2)),
+      growth_stage: stages[Math.min(3, Math.floor(t * 4))],
+      stress_class: stressLevels[stressIndex],
+      deficit_mm: parseFloat((Math.max(0, (1 - ndvi) * 55 + 5)).toFixed(1)),
+    }
+  })
+}
+
+export const mockTimeseries = {
+  default: buildTimeseries(1),
+  1: buildTimeseries(1),
+  2: buildTimeseries(1.3),
+  3: buildTimeseries(0.8),
+  4: buildTimeseries(1.1),
+  5: buildTimeseries(0.9),
+}
+
+─────────────────────────────────────────────────────────
+src/mocks/mockAdvisory.js
+─────────────────────────────────────────────────────────
+
+const base = {
+  field_id: 1,
+  zone_name: 'Vidarbha-Rice-01',
+  crop_type: 'Rice',
+  area_ha: 2340,
+  growth_stage: 'Flowering',
+  ndvi: 0.65,
+  stress_class: 'Moderate',
+  soil_moisture_pct: 42,
+  rainfall_mm: 8,
+  days_since_rain: 5,
+  advisory_status: 'Irrigate Soon',
+  timeline_days: 3,
+  water_amount_mm: 48,
+  duration_hours: 4.5,
+  best_time: '4:00–8:00 AM',
+  advisory_text:
+    'Water deficit is building. Soil moisture at 42% is below the ' +
+    'flowering-stage threshold of 55%. Irrigate within 2–3 days ' +
+    'with 45–50mm to prevent yield loss.',
+}
+
+export const mockAdvisory = {
+  default: base,
+  1: base,
+  2: { ...base, field_id: 2, zone_name: 'Wardha-Cotton-02',
+       crop_type: 'Cotton', stress_class: 'Severe',
+       advisory_status: 'Irrigate Now', timeline_days: 1,
+       advisory_text: 'Critical stress detected at flowering stage. Irrigate immediately.' },
+  3: { ...base, field_id: 3, zone_name: 'Amravati-Wheat-03',
+       crop_type: 'Wheat', stress_class: 'Mild',
+       advisory_status: 'No Action', timeline_days: 7,
+       advisory_text: 'Crop health is satisfactory. No irrigation needed this week.' },
+}
+
+─────────────────────────────────────────────────────────
+src/mocks/mockAlerts.js
+─────────────────────────────────────────────────────────
+
+export const mockAlerts = [
+  {
+    id: 1,
+    field_id: 2,
+    zone_name: 'Wardha-Cotton-02',
+    risk_level: 'critical',
+    message: 'Extreme moisture stress. Yield loss likely within 48 hours if not irrigated.',
+    created_at: '2024-10-15T06:30:00Z',
+  },
+  {
+    id: 2,
+    field_id: 5,
+    zone_name: 'Amravati-Soybean-05',
+    risk_level: 'high',
+    message: 'Severe stress at flowering stage. VCI dropped below 0.3.',
+    created_at: '2024-10-15T07:00:00Z',
+  },
+  {
+    id: 3,
+    field_id: 1,
+    zone_name: 'Vidarbha-Rice-01',
+    risk_level: 'medium',
+    message: 'Moderate stress. Irrigation advised within 2–3 days.',
+    created_at: '2024-10-15T08:00:00Z',
+  },
+]
+
+─────────────────────────────────────────────────────────
+src/mocks/mockGeoJson.js
+─────────────────────────────────────────────────────────
+
+Build 8 polygon features on a 3×3 grid near Nagpur (21.1N, 79.0E).
+Each polygon is a 0.015 degree bounding box, spaced 0.025 degrees apart.
+All three exports (cropType, stress, advisory) use the same geometry
+but different property values.
+
+const makeBox = (lat, lng) => ({
+  type: 'Feature',
+  geometry: {
+    type: 'Polygon',
+    coordinates: [[
+      [lng,       lat      ],
+      [lng+0.015, lat      ],
+      [lng+0.015, lat+0.015],
+      [lng,       lat+0.015],
+      [lng,       lat      ],
+    ]],
+  },
+})
+
+const fields = [
+  { field_id: 1, zone_name: 'Vidarbha-Rice-01',    crop_type: 'Rice',    lat: 21.10, lng: 78.96, stress_class: 'Moderate', advisory: 'Irrigate Soon' },
+  { field_id: 2, zone_name: 'Wardha-Cotton-02',     crop_type: 'Cotton',  lat: 21.10, lng: 78.99, stress_class: 'Severe',   advisory: 'Irrigate Now'  },
+  { field_id: 3, zone_name: 'Amravati-Wheat-03',    crop_type: 'Wheat',   lat: 21.10, lng: 79.02, stress_class: 'Mild',     advisory: 'No Action'     },
+  { field_id: 4, zone_name: 'Nagpur-Soybean-04',    crop_type: 'Soybean', lat: 21.13, lng: 78.96, stress_class: 'None',     advisory: 'No Action'     },
+  { field_id: 5, zone_name: 'Amravati-Soybean-05',  crop_type: 'Soybean', lat: 21.13, lng: 78.99, stress_class: 'Severe',   advisory: 'Irrigate Now'  },
+  { field_id: 6, zone_name: 'Yavatmal-Cotton-06',   crop_type: 'Cotton',  lat: 21.13, lng: 79.02, stress_class: 'Moderate', advisory: 'Irrigate Soon' },
+  { field_id: 7, zone_name: 'Buldhana-Wheat-07',    crop_type: 'Wheat',   lat: 21.16, lng: 78.96, stress_class: 'Mild',     advisory: 'No Action'     },
+  { field_id: 8, zone_name: 'Washim-Rice-08',       crop_type: 'Rice',    lat: 21.16, lng: 78.99, stress_class: 'None',     advisory: 'No Action'     },
+]
+
+const toFeature = (f, props) => ({
+  ...makeBox(f.lat, f.lng),
+  properties: { field_id: f.field_id, zone_name: f.zone_name, ...props(f) },
+})
+
+export const mockGeoJson = {
+  cropType: {
+    type: 'FeatureCollection',
+    features: fields.map(f => toFeature(f, x => ({
+      crop_type: x.crop_type,
+      confidence: 0.91,
+    }))),
+  },
+  stress: {
+    type: 'FeatureCollection',
+    features: fields.map(f => toFeature(f, x => ({
+      stress_class: x.stress_class,
+    }))),
+  },
+  advisory: {
+    type: 'FeatureCollection',
+    features: fields.map(f => toFeature(f, x => ({
+      advisory: x.advisory,
+    }))),
+  },
+}
+
+═══════════════════════════════════════════════════════════
+SECTION 8 — GLOBAL STATE (src/store/useAppStore.js)
+═══════════════════════════════════════════════════════════
+
+import { create } from 'zustand'
+
+const useAppStore = create((set) => ({
+  activeLayer: 'crop-type',
+  selectedFieldId: null,
+  selectedDate: '2024-10-15',
+  districtFilter: 'all',
+
+  setActiveLayer:     (layer)    => set({ activeLayer: layer }),
+  setSelectedFieldId: (id)       => set({ selectedFieldId: id }),
+  setSelectedDate:    (date)     => set({ selectedDate: date }),
+  setDistrictFilter:  (district) => set({ districtFilter: district }),
+}))
+
+export default useAppStore
+
+═══════════════════════════════════════════════════════════
+SECTION 9 — HOOKS (src/hooks/)
+═══════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────
+src/hooks/useFieldData.js
+─────────────────────────────────────────────────────────
+
+import { useQuery } from '@tanstack/react-query'
+import { getTimeseries, getAdvisory } from '../api/fieldsApi'
+
+export const useTimeseries = (fieldId) =>
+  useQuery({
+    queryKey: ['timeseries', fieldId],
+    queryFn: () => getTimeseries(fieldId),
+    enabled: !!fieldId,
+    staleTime: 5 * 60 * 1000,
+  })
+
+export const useAdvisory = (fieldId) =>
+  useQuery({
+    queryKey: ['advisory', fieldId],
+    queryFn: () => getAdvisory(fieldId),
+    enabled: !!fieldId,
+    staleTime: 5 * 60 * 1000,
+  })
+
+─────────────────────────────────────────────────────────
+src/hooks/useMapLayer.js
+─────────────────────────────────────────────────────────
+
+import { useQuery } from '@tanstack/react-query'
+import { getCropTypeLayer, getStressLayer, getAdvisoryLayer } from '../api/mapsApi'
+import useAppStore from '../store/useAppStore'
+
+export const useMapLayer = () => {
+  const activeLayer = useAppStore((s) => s.activeLayer)
+  const selectedDate = useAppStore((s) => s.selectedDate)
+
+  return useQuery({
+    queryKey: ['mapLayer', activeLayer, selectedDate],
+    queryFn: () => {
+      if (activeLayer === 'crop-type') return getCropTypeLayer()
+      if (activeLayer === 'stress')    return getStressLayer(selectedDate)
+      if (activeLayer === 'advisory')  return getAdvisoryLayer(selectedDate)
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+─────────────────────────────────────────────────────────
+src/hooks/useAlerts.js
+─────────────────────────────────────────────────────────
+
+import { useQuery } from '@tanstack/react-query'
+import { getAlerts } from '../api/alertsApi'
+
+export const useAlerts = () =>
+  useQuery({
+    queryKey: ['alerts'],
+    queryFn: getAlerts,
+    staleTime: 2 * 60 * 1000,
+  })
+
+═══════════════════════════════════════════════════════════
+SECTION 10 — ROUTING (src/router.jsx and src/main.jsx)
+═══════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────
+src/router.jsx
+─────────────────────────────────────────────────────────
+
+import { createBrowserRouter } from 'react-router-dom'
+import AppShell    from './components/layout/AppShell'
+import Dashboard   from './pages/Dashboard'
+import MapExplorer from './pages/MapExplorer'
+import Analytics   from './pages/Analytics'
+import FieldDetail from './pages/FieldDetail'
+import Alerts      from './pages/Alerts'
+
+export const router = createBrowserRouter([
+  {
+    path: '/',
+    element: <AppShell />,
+    children: [
+      { index: true,       element: <Dashboard /> },
+      { path: 'map',       element: <MapExplorer /> },
+      { path: 'analytics', element: <Analytics /> },
+      { path: 'field/:id', element: <FieldDetail /> },
+      { path: 'alerts',    element: <Alerts /> },
+    ],
+  },
+])
+
+─────────────────────────────────────────────────────────
+src/main.jsx
+─────────────────────────────────────────────────────────
+
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import { RouterProvider } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { router } from './router'
+import './index.css'
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 2,
+      refetchOnWindowFocus: false,
+    },
+  },
+})
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
+  </React.StrictMode>
+)
+
+═══════════════════════════════════════════════════════════
+SECTION 11 — LAYOUT COMPONENTS
+═══════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────
+src/components/layout/AppShell.jsx
+─────────────────────────────────────────────────────────
+
+import { Outlet } from 'react-router-dom'
+import Sidebar from './Sidebar'
+import TopBar  from './TopBar'
+
+export default function AppShell() {
+  return (
+    <div className="flex h-screen overflow-hidden bg-gray-50">
+      <Sidebar />
+      <div className="flex flex-col flex-1 overflow-hidden">
+        <TopBar />
+        <main className="flex-1 overflow-y-auto">
+          <Outlet />
+        </main>
+      </div>
+    </div>
+  )
+}
+
+─────────────────────────────────────────────────────────
+src/components/layout/Sidebar.jsx
+─────────────────────────────────────────────────────────
+
+Use NavLink from react-router-dom for all links.
+Active link detected with: className={({ isActive }) => ...}
+
+Sidebar width: w-60 (240px), fixed height, bg-[#0F6E56], text-white.
+
+Nav items (in order):
+  { icon: '🌾', label: 'Dashboard',    path: '/'          }
+  { icon: '🗺',  label: 'Map Explorer', path: '/map'       }
+  { icon: '📊', label: 'Analytics',    path: '/analytics' }
+  { icon: '⚠️', label: 'Alerts',       path: '/alerts'    }
+
+Active link style: bg-[#1D9E75] rounded-lg
+Inactive link style: hover:bg-[#1D9E75]/40 rounded-lg
+Bottom of sidebar: small text "v1.0 · ISRO Hackathon" in white/50
+
+─────────────────────────────────────────────────────────
+src/components/layout/TopBar.jsx
+─────────────────────────────────────────────────────────
+
+White bar h-14 border-b border-gray-200.
+Left: current page title from a title map keyed by pathname
+Right: three controls in a flex row gap-3
+  1. <select> District: All Districts, Nagpur, Wardha,
+     Amravati, Yavatmal, Buldhana, Washim
+     onChange: setDistrictFilter in Zustand
+  2. <select> Season: Kharif, Rabi, Zaid
+     (store in local useState — not needed in global store)
+  3. <input type="date"> default value from Zustand selectedDate
+     onChange: setSelectedDate in Zustand
+
+─────────────────────────────────────────────────────────
+src/components/layout/PageWrapper.jsx
+─────────────────────────────────────────────────────────
+
+export default function PageWrapper({ title, children }) {
+  return (
+    <div className="p-6">
+      <h1 className="text-xl font-semibold text-gray-800 mb-6">{title}</h1>
+      {children}
+    </div>
+  )
+}
+
+═══════════════════════════════════════════════════════════
+SECTION 12 — MAP COMPONENTS
+═══════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────
+src/components/map/MapPanel.jsx
+─────────────────────────────────────────────────────────
+
+CRITICAL IMPORTS — put these at the very top of the file:
+  import 'leaflet/dist/leaflet.css'
+  import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet'
+
+Center: [21.12, 78.99], zoom: 11
+TileLayer: https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png
+
+Color helper function (plain JS, no types):
+  function getColor(feature, activeLayer) {
+    if (activeLayer === 'crop-type') {
+      const colors = { Rice: '#1D9E75', Cotton: '#378ADD',
+                       Wheat: '#EF9F27', Soybean: '#639922' }
+      return colors[feature.properties.crop_type] || '#888780'
+    }
+    if (activeLayer === 'stress') {
+      const colors = { None: '#639922', Mild: '#EF9F27',
+                       Moderate: '#BA7517', Severe: '#E24B4A' }
+      return colors[feature.properties.stress_class] || '#888780'
+    }
+    if (activeLayer === 'advisory') {
+      const colors = { 'No Action': '#639922',
+                       'Irrigate Soon': '#EF9F27',
+                       'Irrigate Now': '#E24B4A' }
+      return colors[feature.properties.advisory] || '#888780'
+    }
+    return '#888780'
+  }
+
+Style function passed to GeoJSON:
+  style={(feature) => ({
+    fillColor: getColor(feature, activeLayer),
+    fillOpacity: 0.65,
+    color: '#ffffff',
+    weight: selectedFieldId === feature.properties.field_id ? 3 : 1.5,
+    opacity: 1,
+  })}
+
+onEachFeature: add click handler that calls setSelectedFieldId
+
+Loading overlay: if isLoading, show a centered div with
+  "Loading map..." text over the map (absolute, z-index 1000,
+  bg-white/80, flex items-center justify-center)
+
+Error overlay: if isError, show error message with retry button
+
+─────────────────────────────────────────────────────────
+src/components/map/LayerToggle.jsx
+─────────────────────────────────────────────────────────
+
+Absolute positioned inside map: top-3 left-3 z-[1000]
+White bg card rounded-lg p-1 shadow-sm flex gap-1
+
+Three buttons:
+  'crop-type'  → label 'Crop Type'
+  'stress'     → label 'Stress'
+  'advisory'   → label 'Advisory'
+
+Active: bg-[#0F6E56] text-white rounded-md px-3 py-1.5 text-sm
+Inactive: bg-white text-gray-700 hover:bg-gray-100 rounded-md px-3 py-1.5 text-sm
+
+─────────────────────────────────────────────────────────
+src/components/map/MapLegend.jsx
+─────────────────────────────────────────────────────────
+
+Absolute inside map: bottom-8 left-3 z-[1000]
+White bg rounded-lg p-3 shadow-sm min-w-36
+
+Reads activeLayer from Zustand and renders matching legend.
+Each row: <span> with inline bg color (12px circle) + label text
+
+Legend data:
+  crop-type:
+    { color: '#1D9E75', label: 'Rice' }
+    { color: '#378ADD', label: 'Cotton' }
+    { color: '#EF9F27', label: 'Wheat' }
+    { color: '#639922', label: 'Soybean' }
+  stress:
+    { color: '#639922', label: 'None' }
+    { color: '#EF9F27', label: 'Mild' }
+    { color: '#BA7517', label: 'Moderate' }
+    { color: '#E24B4A', label: 'Severe' }
+  advisory:
+    { color: '#639922', label: 'No Action' }
+    { color: '#EF9F27', label: 'Irrigate Soon' }
+    { color: '#E24B4A', label: 'Irrigate Now' }
+
+═══════════════════════════════════════════════════════════
+SECTION 13 — CHART COMPONENTS
+═══════════════════════════════════════════════════════════
+
+CRITICAL: Register Chart.js at the top of each chart file.
+Each chart file registers only what it needs:
+
+import {
+  Chart as ChartJS,
+  CategoryScale, LinearScale,
+  PointElement, LineElement,
+  BarElement, Title,
+  Tooltip, Legend, Filler,
+} from 'chart.js'
+
+ChartJS.register(
+  CategoryScale, LinearScale,
+  PointElement, LineElement,
+  BarElement, Title,
+  Tooltip, Legend, Filler
+)
+
+DO NOT call ChartJS.register() in main.jsx or App.jsx —
+only inside each individual chart component file.
+
+─────────────────────────────────────────────────────────
+src/components/charts/NdviChart.jsx
+─────────────────────────────────────────────────────────
+
+Props: data (array of timeseries objects)
+
+Show last 60 entries. Labels = obs_date, every 10th shown.
+Dataset: ndvi values, borderColor '#639922',
+  backgroundColor 'rgba(99,153,34,0.1)', tension 0.4,
+  pointRadius 0, fill true
+
+Add a flat reference line dataset at y=0.4:
+  { data: Array(labels.length).fill(0.4),
+    borderColor: '#E24B4A', borderDash: [5,5],
+    pointRadius: 0, label: 'Stress threshold' }
+
+Canvas wrapper: position relative, height 260px
+Y axis: min 0, max 1
+Chart title prop: 'NDVI trend — last 60 days'
+
+Status line below chart:
+  const lastNdvi = data[data.length - 1]?.ndvi ?? 0
+  if lastNdvi < 0.4 → red text "↓ Declining — monitor closely"
+  else → green text "↑ Healthy growth"
+
+─────────────────────────────────────────────────────────
+src/components/charts/WaterBalanceChart.jsx
+─────────────────────────────────────────────────────────
+
+Props: data (array of timeseries objects)
+
+Slice to last 8 entries. Labels = D1 through D8.
+
+Two datasets per day:
+  Requirement = deficit_mm (color #1D9E75 default,
+    but if deficit_mm > deficit_mm*0.6 use #E24B4A per bar
+    — implement using dataset backgroundColor as an array)
+  Available = deficit_mm * 0.6 (color '#9FE1CB')
+
+Type: 'bar', grouped (no stacking).
+Y axis: min 0, suggested max 80
+Chart title: 'Water balance — next 8 days (mm)'
+
+Custom HTML legend below chart:
+  <div> with two spans: green square "Requirement" +
+  teal square "Available"
+
+─────────────────────────────────────────────────────────
+src/components/charts/StressIndexChart.jsx
+─────────────────────────────────────────────────────────
+
+Props: data (array of timeseries objects)
+
+Map stress_class to number:
+  const stressMap = { None: 0, Mild: 0.3, Moderate: 0.6, Severe: 1.0 }
+
+Dataset: mapped numeric values, borderColor '#E24B4A', tension 0.3
+Y axis: min 0, max 1
+Y tick callback:
+  (val) => ({ 0: 'None', 0.3: 'Mild', 0.6: 'Moderate', 1: 'Severe' }[val] ?? '')
+Chart title: 'Stress index trend'
+
+Trend detection below chart:
+  const last3 = mappedValues.slice(-3)
+  const rising = last3[2] >= last3[1] && last3[1] >= last3[0]
+  const falling = last3[2] <= last3[1] && last3[1] <= last3[0]
+  if rising → red "↑ Rising — irrigation needed"
+  if falling → green "↓ Improving"
+  else → gray "→ Stable"
+
+─────────────────────────────────────────────────────────
+src/components/charts/ChartSkeleton.jsx
+─────────────────────────────────────────────────────────
+
+export default function ChartSkeleton() {
+  return (
+    <div className="animate-pulse">
+      <div className="h-4 bg-gray-200 rounded w-1/3 mb-4" />
+      <div className="h-64 bg-gray-200 rounded" />
+      <div className="h-3 bg-gray-200 rounded w-1/4 mt-3" />
+    </div>
+  )
+}
+
+═══════════════════════════════════════════════════════════
+SECTION 14 — ADVISORY COMPONENTS
+═══════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────
+src/components/advisory/AdvisoryCard.jsx
+─────────────────────────────────────────────────────────
+
+Props: advisory object
+White card rounded-xl border border-gray-200 p-4 space-y-3
+
+Header: "Irrigation advisory" label + Badge for advisory_status
+  advisory_status values and Badge variants:
+    'Irrigate Now'  → variant='irrigate-now'  → red badge
+    'Irrigate Soon' → variant='irrigate-soon' → amber badge
+    'No Action'     → variant='no-action'     → green badge
+
+Details grid (grid-cols-2 gap-2 text-sm):
+  Timeline:  {advisory.timeline_days} days
+  Amount:    {advisory.water_amount_mm} mm
+  Duration:  {advisory.duration_hours} hours
+  Best time: {advisory.best_time}
+
+Advisory text block:
+  bg-gray-50 rounded-lg p-3 text-sm text-gray-700 italic
+  Render advisory.advisory_text exactly as received from API
+
+─────────────────────────────────────────────────────────
+src/components/advisory/StressMetrics.jsx
+─────────────────────────────────────────────────────────
+
+Props: { soil_moisture_pct, rainfall_mm, days_since_rain, stress_class }
+White card rounded-xl border border-gray-200 p-4
+
+Title row: "Stress metrics" + stress_class Badge
+
+Three stat rows (flex justify-between text-sm):
+  Soil moisture    {soil_moisture_pct}%
+  Recent rainfall  {rainfall_mm} mm
+  Days since rain  {days_since_rain} days
+
+─────────────────────────────────────────────────────────
+src/components/advisory/HealthBar.jsx
+─────────────────────────────────────────────────────────
+
+Props: { ndvi, growth_stage }
+White card rounded-xl border border-gray-200 p-4
+
+NDVI number:
+  >= 0.6 → text-green-700
+  0.3-0.6 → text-amber-600
+  < 0.3 → text-red-600
+  Display as: text-2xl font-bold
+
+Progress bar:
+  Outer: w-full h-2 bg-gray-200 rounded-full mt-2
+  Inner: h-2 rounded-full, width = (ndvi * 100)%
+    color same thresholds as above but bg- class
+
+Growth stage: text-sm text-gray-500 mt-2
+
+═══════════════════════════════════════════════════════════
+SECTION 15 — UI PRIMITIVES
+═══════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────
+src/components/ui/Badge.jsx
+─────────────────────────────────────────────────────────
+
+Props: { label, variant }
+
+const variantClasses = {
+  'critical':      'bg-red-100 text-red-800',
+  'severe':        'bg-red-100 text-red-800',
+  'irrigate-now':  'bg-red-100 text-red-800',
+  'high':          'bg-orange-100 text-orange-800',
+  'moderate':      'bg-amber-100 text-amber-800',
+  'irrigate-soon': 'bg-amber-100 text-amber-800',
+  'medium':        'bg-yellow-100 text-yellow-800',
+  'mild':          'bg-yellow-100 text-yellow-800',
+  'none':          'bg-green-100 text-green-800',
+  'no-action':     'bg-green-100 text-green-800',
+  'rice':          'bg-teal-100 text-teal-800',
+  'cotton':        'bg-blue-100 text-blue-800',
+  'wheat':         'bg-amber-100 text-amber-800',
+  'soybean':       'bg-lime-100 text-lime-800',
+}
+
+export default function Badge({ label, variant = 'none' }) {
+  const cls = variantClasses[variant.toLowerCase()] || 'bg-gray-100 text-gray-800'
+  return (
+    <span className={`${cls} px-2 py-0.5 rounded-full text-xs font-medium`}>
+      {label}
+    </span>
+  )
+}
+
+─────────────────────────────────────────────────────────
+src/components/ui/Skeleton.jsx
+─────────────────────────────────────────────────────────
+
+export default function Skeleton({ height = '20px', className = '' }) {
+  return (
+    <div
+      className={`animate-pulse bg-gray-200 rounded ${className}`}
+      style={{ height }}
+    />
+  )
+}
+
+─────────────────────────────────────────────────────────
+src/components/ui/AlertPill.jsx
+─────────────────────────────────────────────────────────
+
+Props: { alert, onDismiss }
+
+const bgMap = {
+  critical: 'bg-red-50 border-red-200',
+  high: 'bg-orange-50 border-orange-200',
+  medium: 'bg-yellow-50 border-yellow-200',
+}
+
+Renders inline pill (flex items-center gap-2 px-3 py-2 rounded-lg
+border text-sm whitespace-nowrap):
+  Badge + zone_name (font-medium) +
+  message truncated to 50 chars +
+  × button that calls onDismiss(alert.id)
+
+─────────────────────────────────────────────────────────
+src/components/ui/Button.jsx
+─────────────────────────────────────────────────────────
+
+Props: { children, variant = 'primary', onClick, className, disabled }
+
+const variants = {
+  primary:   'bg-[#0F6E56] text-white hover:bg-[#1D9E75]',
+  secondary: 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50',
+  danger:    'bg-red-600 text-white hover:bg-red-700',
+}
+
+export default function Button({ children, variant='primary',
+  onClick, className='', disabled=false }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`${variants[variant]} px-4 py-2 rounded-lg text-sm
+        font-medium transition-colors focus:outline-none focus:ring-2
+        focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed
+        ${className}`}
+    >
+      {children}
+    </button>
+  )
+}
+
+═══════════════════════════════════════════════════════════
+SECTION 16 — PAGES
+═══════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────
+src/pages/Dashboard.jsx  (route: /)
+─────────────────────────────────────────────────────────
+
+import PageWrapper from '../components/layout/PageWrapper'
+import AlertPill   from '../components/ui/AlertPill'
+import Badge       from '../components/ui/Badge'
+import { useAlerts } from '../hooks/useAlerts'
+import { useNavigate } from 'react-router-dom'
+import useAppStore from '../store/useAppStore'
+
+STAT CARDS — 4 cards grid-cols-4 gap-4 mb-6:
+  Use useAlerts() data to compute:
+  1. "Total fields" → 8 (length of mock GeoJSON features)
+  2. "Under stress" → count alerts where risk_level is
+     'critical' or 'high'
+  3. "Need irrigation" → count alerts where risk_level is
+     'critical'
+  4. "Avg NDVI" → hardcoded 0.62 (from ML team in production)
+
+  Each card: bg-white rounded-xl border border-gray-200 p-5
+    <p className="text-sm text-gray-500">{label}</p>
+    <p className="text-3xl font-bold text-[#0F6E56] mt-1">{value}</p>
+
+ALERTS STRIP — below stat cards, mb-6:
+  const [dismissed, setDismissed] = useState([])
+  const visible = alerts.filter(a => !dismissed.includes(a.id))
+  If visible.length === 0, render nothing.
+  Else: flex overflow-x-auto gap-3 pb-2 with AlertPill for each
+
+LATEST ADVISORIES TABLE — white card rounded-xl border p-4:
+  Title "Latest field advisories" text-sm font-semibold mb-3
+  Table with columns: Zone, Crop, Stress, Advisory, Action
+  Use mockAdvisory data (all entries)
+  Stress column: <Badge label={stress_class}
+                        variant={stress_class.toLowerCase()} />
+  Advisory column: <Badge label={advisory_status}
+                          variant={advisory_status
+                            .toLowerCase().replace(' ', '-')} />
+  Action column: "View →" button that navigates to /field/:id
+    and sets selectedFieldId in Zustand
+
+─────────────────────────────────────────────────────────
+src/pages/MapExplorer.jsx  (route: /map)
+─────────────────────────────────────────────────────────
+
+NO PageWrapper. Full bleed layout.
+
+<div className="flex" style={{ height: 'calc(100vh - 56px)' }}>
+
+  LEFT — flex-1 relative:
+    <MapPanel />
+    <LayerToggle /> (inside map, absolute positioned)
+    <MapLegend />   (inside map, absolute positioned)
+
+  RIGHT — w-96 bg-white border-l border-gray-200
+          overflow-y-auto p-5 flex-shrink-0:
+
+    If selectedFieldId is null:
+      <div className="flex flex-col items-center justify-center
+                      h-full text-center text-gray-400">
+        <span className="text-4xl mb-3">🗺</span>
+        <p className="font-medium text-gray-600">Select a field</p>
+        <p className="text-sm mt-1">Click any field on the map
+          to see crop details, stress metrics, and irrigation advice.</p>
+      </div>
+
+    If selectedFieldId is set:
+      Fetch useAdvisory(selectedFieldId)
+      Loading: 3 stacked Skeleton components
+      Error: red error div with retry button
+      Success: render in order:
+        Field header (zone_name h2, crop_type Badge, area_ha, growth_stage)
+        <HealthBar ndvi={...} growth_stage={...} />
+        <StressMetrics ... />
+        <AdvisoryCard advisory={...} />
+        Action buttons row:
+          <Button variant="secondary"
+            onClick={() => navigator.clipboard.writeText(advisory.advisory_text)}>
+            Copy advisory
+          </Button>
+          <Button onClick={() => navigate(`/field/${selectedFieldId}`)}>
+            Full detail →
+          </Button>
+
+─────────────────────────────────────────────────────────
+src/pages/Analytics.jsx  (route: /analytics)
+─────────────────────────────────────────────────────────
+
+import PageWrapper from '../components/layout/PageWrapper'
+import { useTimeseries } from '../hooks/useFieldData'
+import NdviChart from '../components/charts/NdviChart'
+import WaterBalanceChart from '../components/charts/WaterBalanceChart'
+import StressIndexChart from '../components/charts/StressIndexChart'
+import ChartSkeleton from '../components/charts/ChartSkeleton'
+import useAppStore from '../store/useAppStore'
+
+FILTER BAR — flex gap-4 mb-6 items-end:
+
+  Field selector <select>:
+    Options built from mockGeoJson.cropType.features
+    value = selectedFieldId, onChange = setSelectedFieldId
+    If null: first option is "Select a field..."
+
+  Start date <input type="date"> → local useState startDate
+  End date   <input type="date"> → local useState endDate
+
+  Export CSV <Button variant="secondary">Export CSV</Button>:
+    On click: filter timeseries to date range, build CSV string,
+    create Blob, URL.createObjectURL, trigger download via
+    a temporary <a> element click.
+    CSV columns: obs_date,ndvi,evi,growth_stage,stress_class,deficit_mm
+
+CHARTS SECTION:
+  const { data, isLoading, isError, refetch } = useTimeseries(selectedFieldId)
+
+  Filter data by startDate/endDate if both are set.
+
+  If no selectedFieldId:
+    Show a gray placeholder card in place of each chart:
+    "Select a field above to view data"
+
+  If isLoading: show <ChartSkeleton /> in place of each chart
+
+  If isError: show red error message with retry button
+
+  If data: render charts
+    Top row: grid-cols-2 gap-6
+      <NdviChart data={filtered} />
+      <WaterBalanceChart data={filtered} />
+    Full width below:
+      <StressIndexChart data={filtered} />
+
+DATA TABLE — white card mt-6 rounded-xl border p-4:
+  Title "Raw timeseries data"
+  const [page, setPage] = useState(0)
+  const PAGE_SIZE = 10
+  Show data.slice(page*PAGE_SIZE, (page+1)*PAGE_SIZE)
+  Columns: Date, NDVI, EVI, Growth Stage, Stress, Deficit (mm)
+  Stress column: <Badge label={row.stress_class}
+                        variant={row.stress_class.toLowerCase()} />
+  Pagination: "Prev" and "Next" buttons, disabled when at edges
+  "Showing X–Y of Z rows" text
+
+─────────────────────────────────────────────────────────
+src/pages/FieldDetail.jsx  (route: /field/:id)
+─────────────────────────────────────────────────────────
+
+import { useParams, useNavigate } from 'react-router-dom'
+import { useTimeseries, useAdvisory } from '../hooks/useFieldData'
+
+const { id } = useParams()
+const fieldId = parseInt(id, 10)
+
+Fetch both useTimeseries(fieldId) and useAdvisory(fieldId).
+
+Use PageWrapper with title = advisory.zone_name or 'Field detail'
+
+Layout: grid grid-cols-3 gap-6
+
+LEFT — col-span-2, charts stacked:
+  Each chart in bg-white rounded-xl border p-4 mb-4:
+  <NdviChart data={timeseries} />
+  <WaterBalanceChart data={timeseries} />
+  <StressIndexChart data={timeseries} />
+
+RIGHT — col-span-1, sticky top-0:
+  Field header card (zone_name, crop_type Badge, area_ha, growth_stage)
+  <HealthBar />
+  <StressMetrics />
+  <AdvisoryCard />
+  Button row:
+    <Button variant="secondary" onClick={handleExportJSON}>
+      Export JSON
+    </Button>
+    <Button variant="secondary" onClick={() => navigate('/map')}>
+      ← Back to map
+    </Button>
+
+  handleExportJSON: combine timeseries + advisory into one object,
+  JSON.stringify, Blob, download as cropwise-field-{id}.json
+
+ADVISORY HISTORY TABLE — full width below grid, mt-6:
+  Title "Advisory history"
+  Show last 30 timeseries entries, reverse chronological
+  Columns: Date, Growth Stage, Stress, Deficit (mm)
+  Stress column: Badge
+
+─────────────────────────────────────────────────────────
+src/pages/Alerts.jsx  (route: /alerts)
+─────────────────────────────────────────────────────────
+
+import PageWrapper from '../components/layout/PageWrapper'
+import { useAlerts } from '../hooks/useAlerts'
+import { useNavigate } from 'react-router-dom'
+import useAppStore from '../store/useAppStore'
+import Badge from '../components/ui/Badge'
+import Button from '../components/ui/Button'
+
+const [activeTab, setActiveTab] = useState('active')
+const [dismissed, setDismissed] = useState([])
+const [riskFilter, setRiskFilter] = useState('all')
+
+FILTER BAR — flex gap-3 mb-6 items-center:
+
+  Risk level buttons (plain <button> not Button component):
+    [All] [Critical] [High] [Medium]
+    Active: bg-[#0F6E56] text-white rounded-lg px-3 py-1.5 text-sm
+    Inactive: bg-white border border-gray-200 text-gray-600 rounded-lg
+              px-3 py-1.5 text-sm hover:bg-gray-50
+
+TABS row — flex gap-4 mb-4 border-b border-gray-200:
+  "Active ({activeCount})" tab
+  "Dismissed ({dismissed.length})" tab
+  Active tab: border-b-2 border-[#0F6E56] text-[#0F6E56] font-medium
+  Inactive tab: text-gray-500 hover:text-gray-700
+
+ACTIVE TAB — filtered list of alert cards:
+  Filtering:
+    active list = alerts where id NOT in dismissed array
+    then filter by riskFilter if not 'all'
+
+  Each alert: bg-white rounded-xl border-l-4 p-4 mb-3
+    border-l color: critical→red-500, high→orange-500, medium→yellow-400
+
+    Top row: zone_name font-semibold + risk_level Badge + timestamp text-xs
+    Body: message text-sm text-gray-600 mt-1
+    Button row mt-3 flex gap-2:
+      <Button variant="secondary" onClick={() => {
+        setSelectedFieldId(alert.field_id)
+        navigate('/map')
+      }}>View on map →</Button>
+      <Button variant="secondary" onClick={() =>
+        setDismissed(prev => [...prev, alert.id])}>
+        Dismiss
+      </Button>
+
+  If filtered list is empty:
+    <div className="text-center text-gray-400 py-12">
+      <p>No alerts for this filter.</p>
+    </div>
+
+DISMISSED TAB — same cards but:
+  bg-gray-50, no colored border-l, text-gray-400 (faded)
+  Only button: [Restore] → removes id from dismissed array
+
+═══════════════════════════════════════════════════════════
+SECTION 17 — ERROR AND LOADING RULES (REQUIRED EVERYWHERE)
+═══════════════════════════════════════════════════════════
+
+EVERY component that calls a hook with isLoading/isError MUST:
+
+LOADING → show <Skeleton> or <ChartSkeleton>, never a blank area
+ERROR   → show this exact pattern:
+  <div className="text-sm text-red-600 bg-red-50 rounded-lg p-4">
+    <p>{error.message}</p>
+    <button onClick={() => refetch()}
+      className="mt-2 text-red-700 underline text-xs">
+      Retry
+    </button>
+  </div>
+EMPTY   → show a gray placeholder with helpful text
+
+NEVER render undefined, null, or 0 values directly in JSX.
+Always use optional chaining: advisory?.ndvi ?? 'N/A'
+
+═══════════════════════════════════════════════════════════
+SECTION 18 — COLORS (use only these hex values)
+═══════════════════════════════════════════════════════════
+
+Sidebar bg:        #0F6E56
+Active/hover:      #1D9E75
+Chart green:       #639922
+Chart amber:       #EF9F27
+Chart orange:      #BA7517
+Chart red:         #E24B4A
+Chart blue:        #378ADD
+Chart teal fill:   #9FE1CB
+Page background:   #F9FAFB  (Tailwind bg-gray-50)
+Card surface:      #FFFFFF
+Border:            #E5E7EB  (Tailwind border-gray-200)
+Text primary:      #111827  (Tailwind text-gray-900)
+Text muted:        #6B7280  (Tailwind text-gray-500)
+
+═══════════════════════════════════════════════════════════
+SECTION 19 — HOW TO RUN
+═══════════════════════════════════════════════════════════
+
+With mock data (no backend needed — use this first):
+  1. Copy .env.example to .env
+     Set VITE_USE_MOCK=true
+  2. npm run dev
+  3. Open http://localhost:5173
+  All 5 pages work with fake data. No proxy needed.
+
+With real FastAPI backend:
+  1. Set VITE_USE_MOCK=false in .env
+  2. Copy proxy-server/.env.example to proxy-server/.env
+     Set BACKEND_URL=http://<fastapi-host>:8000
+  3. npm start   (runs Vite + proxy together via concurrently)
+  4. Open http://localhost:5173
+  Browser only ever sees localhost:5173 — FastAPI URL never exposed.
+
+═══════════════════════════════════════════════════════════
+SECTION 20 — FINAL CHECKLIST
+═══════════════════════════════════════════════════════════
+
+Run through this before finishing:
+
+□ Zero .ts or .tsx files exist anywhere
+□ Zero TypeScript syntax (no types, no interfaces, no generics)
+□ Zero Next.js imports or concepts
+□ npm run dev starts with VITE_USE_MOCK=true and no errors
+□ All 5 pages load without console errors
+□ Sidebar navigation works between all 5 pages
+□ Dashboard shows stat cards + alerts strip + table
+□ MapExplorer shows colored polygons on the Leaflet map
+□ Clicking a polygon populates the right-side details panel
+□ LayerToggle switches all polygon colors without page reload
+□ MapLegend updates to match the active layer
+□ Analytics field selector loads charts for the chosen field
+□ Analytics Export CSV downloads a real .csv file
+□ FieldDetail at /field/1 loads all 3 charts + right sidebar
+□ Alerts page filter buttons and tabs work correctly
+□ [View on map] in Alerts navigates to /map with field selected
+□ All loading states show Skeleton (no blank white areas)
+□ All error states show inline message + retry button
+□ No FastAPI URL appears anywhere in src/
+□ proxy-server/.env is in .gitignore and not committed
+□ advisory_text, ndvi, stress values all come from
+  mock data or API — never computed in the frontend
