@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom'
 
 export default function Sidebar() {
   const items = [
-    { icon: '🌾', label: 'Dashboard',    path: '/'          },
+    { icon: '🌾', label: 'Dashboard',    path: '/dashboard' },
     { icon: '🗺',  label: 'Map Explorer', path: '/map'       },
     { icon: '📊', label: 'Analytics',    path: '/analytics' },
     { icon: '⚠️', label: 'Alerts',       path: '/alerts'    },
@@ -34,8 +34,14 @@ export default function Sidebar() {
           ))}
         </nav>
       </div>
-      <div className="px-2 text-xs text-white/50">
-        v1.0 · ISRO Hackathon
+      <div className="px-2 space-y-2">
+        <a
+          href="/"
+          className="flex items-center gap-2 text-xs text-white/50 hover:text-white/80 transition-colors"
+        >
+          ← Home
+        </a>
+        <p className="text-xs text-white/40">v1.0 · ISRO Hackathon</p>
       </div>
     </div>
   )
