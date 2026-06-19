@@ -45,6 +45,14 @@ export default function LandingPage() {
   const navigate = useNavigate()
   const heroRef = useRef(null)
 
+  // Manage landing page body scrollbar (hide scrollbar while active)
+  useEffect(() => {
+    document.documentElement.classList.add('landing-page-active')
+    return () => {
+      document.documentElement.classList.remove('landing-page-active')
+    }
+  }, [])
+
   // Parallax shimmer on hero
   useEffect(() => {
     const hero = heroRef.current
@@ -59,6 +67,22 @@ export default function LandingPage() {
     return () => window.removeEventListener('mousemove', onMove)
   }, [])
 
+  // Native smooth scroll to anchor sections with fixed header offset (e.g. 80px)
+  const handleScrollTo = (e, targetId) => {
+    e.preventDefault()
+    const target = document.getElementById(targetId)
+    if (!target) return
+
+    const headerOffset = 80
+    const elementPosition = target.getBoundingClientRect().top
+    const offsetPosition = elementPosition + window.pageYOffset - headerOffset
+
+    window.scrollTo({
+      top: offsetPosition,
+      behavior: 'smooth'
+    })
+  }
+
   return (
     <div className="min-h-screen bg-[#05120E] text-white font-sans overflow-x-hidden">
       {/* ─── Navbar ─── */}
@@ -68,9 +92,9 @@ export default function LandingPage() {
           <span className="text-lg font-bold tracking-tight text-[#1D9E75]">CropWise AI</span>
         </div>
         <div className="hidden md:flex items-center gap-8 text-sm text-gray-400">
-          <a href="#features" className="hover:text-white transition-colors">Features</a>
-          <a href="#stats" className="hover:text-white transition-colors">Impact</a>
-          <a href="#how" className="hover:text-white transition-colors">How it works</a>
+          <a href="#features" onClick={(e) => handleScrollTo(e, 'features')} className="hover:text-white transition-colors">Features</a>
+          <a href="#stats" onClick={(e) => handleScrollTo(e, 'stats')} className="hover:text-white transition-colors">Impact</a>
+          <a href="#how" onClick={(e) => handleScrollTo(e, 'how')} className="hover:text-white transition-colors">How it works</a>
         </div>
         <button
           onClick={() => navigate('/dashboard')}
@@ -92,10 +116,10 @@ export default function LandingPage() {
         <div className="absolute top-32 left-1/4 w-72 h-72 rounded-full bg-[#0F6E56]/10 blur-3xl pointer-events-none animate-pulse" />
         <div className="absolute bottom-40 right-1/4 w-56 h-56 rounded-full bg-[#378ADD]/10 blur-3xl pointer-events-none" style={{ animationDelay: '1s' }} />
 
-        {/* Badge */}
-        <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#0F6E56]/20 border border-[#1D9E75]/30 text-[#1D9E75] text-xs font-semibold tracking-widest uppercase mb-6">
-          🚀 ISRO Hackathon — Challenge 6
-        </span>
+        {/* Badge
+        // <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#0F6E56]/20 border border-[#1D9E75]/30 text-[#1D9E75] text-xs font-semibold tracking-widest uppercase mb-6">
+        //   🚀 ISRO Hackathon — Challenge 6
+        </span> */}
 
         <h1 className="text-5xl md:text-7xl font-extrabold leading-tight tracking-tight mb-6 max-w-4xl">
           AI-powered{' '}
