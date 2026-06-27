@@ -1,7 +1,9 @@
 node_modules/
 dist/
 .env
+.env.example
 proxy-server/.env
+proxy-server/.env.example
 proxy-server/node_modules/
 .DS_Store
 *.log

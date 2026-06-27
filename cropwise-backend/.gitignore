@@ -1,5 +1,11 @@
 env
 .env
+.env-example
+API.md
+CHECKLIST.md
+requirements.txt
+SETUP.md
+QUICKSTART.md
 __pycache__/
 *.pyc
 *.pyo
@@ -14,3 +20,5 @@ gee-key*.json
 dist/
 build/
 *.egg-info/
+
+
