@@ -1,7 +1,8 @@
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useMapLayer } from '../../hooks/useMapLayer'
+import { useTileLayer } from '../../hooks/useTileLayer'
 import useAppStore from '../../store/useAppStore'
 
 // Fix Leaflet default marker icons broken by Vite's asset bundling
@@ -30,15 +31,16 @@ function getColor(feature, activeLayer) {
 
 export default function MapPanel() {
   const activeLayer = useAppStore((s) => s.activeLayer)
-  const selectedDate = useAppStore((s) => s.selectedDate)
   const selectedFieldId = useAppStore((s) => s.selectedFieldId)
   const setSelectedFieldId = useAppStore((s) => s.setSelectedFieldId)
 
   const { data, isLoading, isError, error, refetch } = useMapLayer()
+  const { data: tileData } = useTileLayer(activeLayer)
 
   const mapContainerRef = useRef(null) // DOM div ref
   const mapRef = useRef(null)          // L.Map instance
   const geoLayerRef = useRef(null)     // current GeoJSON layer
+  const tileLayerRef = useRef(null)    // current tile layer
 
   // --- Initialise Leaflet map imperatively (no react-leaflet) ---
   useEffect(() => {
@@ -73,7 +75,21 @@ export default function MapPanel() {
     const map = mapRef.current
     if (!map || !data) return
 
-    // Remove old layer
+    // Remove old tile layer if present
+    if (tileLayerRef.current) {
+      map.removeLayer(tileLayerRef.current)
+      tileLayerRef.current = null
+    }
+
+    if (tileData?.tile_url) {
+      tileLayerRef.current = L.tileLayer(tileData.tile_url, {
+        attribution: tileData.attribution,
+        opacity: 0.75,
+        maxZoom: 19,
+      }).addTo(map)
+    }
+
+    // Remove old vector layer
     if (geoLayerRef.current) {
       map.removeLayer(geoLayerRef.current)
       geoLayerRef.current = null
@@ -82,7 +98,7 @@ export default function MapPanel() {
     const layer = L.geoJSON(data, {
       style: (feature) => ({
         fillColor: getColor(feature, activeLayer),
-        fillOpacity: 0.65,
+        fillOpacity: tileData?.tile_url ? 0.0 : 0.65,
         color: '#ffffff',
         weight: selectedFieldId === feature.properties.field_id ? 3.5 : 1.5,
         opacity: 1,
@@ -109,13 +125,13 @@ export default function MapPanel() {
     layer.addTo(map)
     geoLayerRef.current = layer
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, activeLayer, selectedFieldId])
+  }, [data, activeLayer, selectedFieldId, tileData])
 
   return (
     <div className="relative w-full h-full">
       {/* Loading overlay */}
       {isLoading && (
-        <div className="absolute inset-0 z-[1000] bg-white/80 flex items-center justify-center">
+        <div className="absolute inset-0 z-1000 bg-white/80 flex items-center justify-center">
           <span className="text-[#0F6E56] font-semibold text-lg animate-pulse">
             Loading map…
           </span>
@@ -124,7 +140,7 @@ export default function MapPanel() {
 
       {/* Error overlay */}
       {isError && (
-        <div className="absolute inset-0 z-[1000] bg-white/90 flex flex-col items-center justify-center p-4">
+        <div className="absolute inset-0 z-1000 bg-white/90 flex flex-col items-center justify-center p-4">
           <div className="text-sm text-red-600 bg-red-50 rounded-lg p-4 max-w-md text-center">
             <p>{error?.message || 'Error loading map layers'}</p>
             <button

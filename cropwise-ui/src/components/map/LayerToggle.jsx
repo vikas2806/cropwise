@@ -11,7 +11,7 @@ export default function LayerToggle() {
   ]
 
   return (
-    <div className="absolute top-3 left-14 z-[1000] bg-white rounded-lg p-1 shadow-md flex gap-1 border border-gray-200">
+    <div className="absolute top-3 left-14 z-1000 bg-white rounded-lg p-1 shadow-md flex gap-1 border border-gray-200">
       {buttons.map((btn) => {
         const isActive = activeLayer === btn.id
         return (

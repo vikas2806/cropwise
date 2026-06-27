@@ -1,0 +1,1819 @@
+╔══════════════════════════════════════════════════════════════════════╗
+║       CROPWISE AI — FASTAPI BACKEND MASTER PROMPT                   ║
+║       Stack: Python · FastAPI · Google Earth Engine · PostgreSQL     ║
+║       Approach: GEE generates live tile URLs → FastAPI serves them  ║
+║       Frontend uses tile URLs in Leaflet — no local model files     ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+═══════════════════════════════════════════════════════════
+SECTION 0 — CRITICAL CONTEXT (READ THIS BEFORE EVERYTHING)
+═══════════════════════════════════════════════════════════
+
+The ML team has provided working Google Earth Engine (GEE)
+scripts. There are NO .pkl or .h5 model files.
+The "models" are GEE-based computations using NDVI/NDWI
+spectral index thresholds that run on Google's servers.
+
+GEE Project ID: cropwise-ai-499810
+
+What the existing scripts already do (DO NOT REWRITE THEM):
+  get_satellite.py        → Maharashtra NDVI via Sentinel-2
+  punjab_satellite.py     → Punjab NDVI via Sentinel-2
+  crop.py                 → Kharif/Rabi crop classification
+  punjab_crop.py          → Punjab single-season crop classification
+  authenticate.py         → GEE user credential auth
+
+What the HTML files contain:
+  maharashtra_ndvi.html   → geemap output with GEE tile URLs embedded
+  punjab_ndvi.html        → same for Punjab
+  punjab_crop_types.html  → crop classification tile URLs
+  punjab_seasonal_crops.html → seasonal crop tile URLs
+
+KEY INSIGHT — these HTML files contain live GEE tile URLs like:
+  https://earthengine.googleapis.com/v1/projects/
+  cropwise-ai-499810/maps/<map_id>/tiles/{z}/{x}/{y}
+
+These tile URLs are what the React Leaflet map consumes.
+FastAPI's job is to call GEE, generate fresh tile URLs,
+and return them to the frontend. The frontend plugs them
+into Leaflet TileLayer directly.
+
+HOW THE SYSTEM WORKS END TO END:
+  1. Frontend asks FastAPI: GET /tiles/ndvi
+  2. FastAPI calls GEE via earthengine-api
+  3. GEE returns a map_id + token (tile URL)
+  4. FastAPI returns { tile_url, attribution } JSON
+  5. Frontend puts tile_url into react-leaflet TileLayer
+  6. Leaflet streams the actual satellite tiles from GEE
+  7. User sees the real satellite crop/NDVI/stress map
+
+This is exactly how the existing HTML files work —
+geemap does this internally, we are just exposing it
+as an API instead of saving an HTML file.
+
+DO NOT:
+  - Use geemap (it saves HTML files — we don't want that)
+  - Use .to_html() anywhere
+  - Try to download or store satellite pixels locally
+  - Use sklearn, tensorflow, or any local ML libraries
+  - Build any authentication or login system
+
+═══════════════════════════════════════════════════════════
+SECTION 1 — PROJECT FOLDER STRUCTURE
+═══════════════════════════════════════════════════════════
+
+The root folder contains two siblings:
+
+cropwise/
+├── cropwise-ui/              ← React frontend (ALREADY BUILT, DO NOT TOUCH)
+└── cropwise-backend/         ← YOU ARE BUILDING THIS
+
+Inside cropwise-backend/ create this exact structure:
+
+cropwise-backend/
+├── .env                      ← secrets (never committed)
+├── .env.example              ← template with empty values (commit this)
+├── .gitignore
+├── requirements.txt
+├── main.py                   ← FastAPI app entry point
+│
+└── app/
+    ├── __init__.py
+    │
+    ├── config.py             ← loads .env into Settings object
+    ├── database.py           ← SQLAlchemy engine + session
+    │
+    ├── gee/
+    │   ├── __init__.py
+    │   ├── auth.py           ← ee.Initialize logic (from authenticate.py)
+    │   ├── tiles.py          ← generates GEE tile URLs (core of backend)
+    │   ├── crop.py           ← crop classification logic (from crop.py)
+    │   └── stress.py         ← stress + advisory computation
+    │
+    ├── models/
+    │   ├── __init__.py
+    │   └── field.py          ← SQLAlchemy ORM: fields, timeseries, advisories
+    │
+    ├── schemas/
+    │   ├── __init__.py
+    │   ├── tiles.py          ← Pydantic: tile URL response shapes
+    │   ├── field.py          ← Pydantic: field + timeseries + advisory shapes
+    │   └── alerts.py         ← Pydantic: alert response shape
+    │
+    ├── services/
+    │   ├── __init__.py
+    │   ├── tile_service.py   ← calls gee/tiles.py, caches result in DB
+    │   ├── field_service.py  ← field data + advisory logic
+    │   └── alert_service.py  ← alert generation from advisory data
+    │
+    └── routers/
+        ├── __init__.py
+        ├── tiles.py          ← GET /tiles/* endpoints
+        ├── fields.py         ← GET /fields/* endpoints
+        └── alerts.py         ← GET /alerts endpoint
+
+═══════════════════════════════════════════════════════════
+SECTION 2 — REQUIREMENTS.TXT
+═══════════════════════════════════════════════════════════
+
+Write this exact file:
+
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+sqlalchemy==2.0.30
+psycopg2-binary==2.9.9
+geoalchemy2==0.15.1
+pydantic==2.7.1
+pydantic-settings==2.2.1
+python-dotenv==1.0.1
+earthengine-api==0.1.401
+numpy==1.26.4
+pandas==2.2.2
+shapely==2.0.4
+
+Install command:
+  pip install -r requirements.txt
+
+Run command:
+  uvicorn main:app --reload --port 8000
+
+═══════════════════════════════════════════════════════════
+SECTION 3 — ENVIRONMENT VARIABLES
+═══════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────
+.env.example  (COMMIT THIS FILE)
+─────────────────────────────────────────────────────────
+
+# ─── DATABASE ───────────────────────────────────────────
+# Paste your PostgreSQL connection string here
+# Format: postgresql://user:password@host:port/dbname
+# Example (local):   postgresql://postgres:password@localhost:5432/cropwise_db
+# Example (Supabase): postgresql://postgres:<password>@db.<ref>.supabase.co:5432/postgres
+# Example (Neon):     postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/cropwise_db
+DATABASE_URL=postgresql://YOUR_USER:YOUR_PASSWORD@YOUR_HOST:5432/YOUR_DB
+
+# ─── GOOGLE EARTH ENGINE ────────────────────────────────
+# GEE project ID — already working from the ML team's scripts
+GEE_PROJECT_ID=cropwise-ai-499810
+
+# Optional: service account for production deployment
+# Leave empty to use saved user credentials (ee.Authenticate())
+GEE_SERVICE_ACCOUNT=
+GEE_KEY_FILE=
+
+# ─── SECURITY ───────────────────────────────────────────
+# Must match INTERNAL_API_KEY in cropwise-ui/proxy-server/.env
+# Generate with: python -c "import secrets; print(secrets.token_hex(32))"
+INTERNAL_API_KEY=replace_with_long_random_string
+
+# Origins allowed to call this API (the proxy server URL)
+ALLOWED_ORIGINS=http://localhost:4000,http://localhost:5173
+
+# ─── BEHAVIOUR ──────────────────────────────────────────
+# true  = return mock tile URLs and data when GEE is unavailable
+# false = always call GEE (fail if GEE is down)
+USE_MOCK_GEE=true
+
+# true  = cache GEE tile URLs in PostgreSQL for 24 hours
+#         (GEE tile URL generation takes 30-60 seconds,
+#          caching makes subsequent calls instant)
+CACHE_TILES=true
+
+# How long to cache tile URLs before regenerating (seconds)
+CACHE_TTL_SECONDS=86400
+
+─────────────────────────────────────────────────────────
+.gitignore
+─────────────────────────────────────────────────────────
+
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.venv/
+*.json
+gee-key*.json
+*.h5
+*.pkl
+*.joblib
+dist/
+build/
+*.egg-info/
+
+═══════════════════════════════════════════════════════════
+SECTION 4 — CONFIG (app/config.py)
+═══════════════════════════════════════════════════════════
+
+Write this file exactly:
+
+from pydantic_settings import BaseSettings
+from typing import Optional
+
+class Settings(BaseSettings):
+    # Database — user pastes their PostgreSQL URL here
+    database_url: str
+
+    # GEE
+    gee_project_id:      str            = "cropwise-ai-499810"
+    gee_service_account: Optional[str]  = None
+    gee_key_file:        Optional[str]  = None
+
+    # Security
+    internal_api_key: str
+    allowed_origins:  str = "http://localhost:4000"
+
+    # Behaviour
+    use_mock_gee:       bool = True
+    cache_tiles:        bool = True
+    cache_ttl_seconds:  int  = 86400
+
+    class Config:
+        env_file = ".env"
+
+settings = Settings()
+
+ALLOWED_ORIGINS_LIST = [
+    origin.strip()
+    for origin in settings.allowed_origins.split(",")
+]
+
+═══════════════════════════════════════════════════════════
+SECTION 5 — DATABASE (app/database.py)
+═══════════════════════════════════════════════════════════
+
+Write this file exactly:
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from app.config import settings
+
+# pool_pre_ping=True handles dropped connections (important for
+# cloud DBs like Supabase / Neon that go idle)
+engine = create_engine(
+    settings.database_url,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10,
+)
+
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine,
+)
+
+class Base(DeclarativeBase):
+    pass
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+═══════════════════════════════════════════════════════════
+SECTION 6 — DATABASE SCHEMA
+═══════════════════════════════════════════════════════════
+
+The user will paste their PostgreSQL URL into .env.
+The app auto-creates tables on startup via SQLAlchemy.
+BUT PostGIS must be enabled manually first.
+
+─────────────────────────────────────────────────────────
+If using a LOCAL PostgreSQL:
+─────────────────────────────────────────────────────────
+  psql -U postgres
+  CREATE DATABASE cropwise_db;
+  \c cropwise_db
+  CREATE EXTENSION IF NOT EXISTS postgis;
+
+─────────────────────────────────────────────────────────
+If using SUPABASE (recommended for hackathon):
+─────────────────────────────────────────────────────────
+  1. Create project at supabase.com
+  2. Go to SQL Editor → run:
+       CREATE EXTENSION IF NOT EXISTS postgis;
+  3. Copy connection string from Settings → Database
+  4. Paste into DATABASE_URL in .env
+
+─────────────────────────────────────────────────────────
+If using NEON (also good for hackathon):
+─────────────────────────────────────────────────────────
+  1. Create project at neon.tech
+  2. Go to SQL Editor → run:
+       CREATE EXTENSION IF NOT EXISTS postgis;
+  3. Copy connection string
+  4. Paste into DATABASE_URL in .env
+
+─────────────────────────────────────────────────────────
+SEED DATA — run once after tables are created:
+─────────────────────────────────────────────────────────
+
+In main.py lifespan, after Base.metadata.create_all(),
+call a seed function that inserts 8 sample Maharashtra
+fields IF the fields table is empty.
+
+The 8 fields (use these exact values):
+
+Zone Name              | Crop    | Area(ha) | District  | lon_min | lat_min | lon_max | lat_max
+Vidarbha-Rice-01       | Rice    | 2340     | Nagpur    | 78.960  | 21.100  | 78.975  | 21.115
+Wardha-Cotton-02       | Cotton  | 1850     | Wardha    | 78.990  | 21.100  | 79.005  | 21.115
+Amravati-Wheat-03      | Wheat   | 1200     | Amravati  | 79.020  | 21.100  | 79.035  | 21.115
+Nagpur-Soybean-04      | Soybean | 980      | Nagpur    | 78.960  | 21.130  | 78.975  | 21.145
+Amravati-Soybean-05    | Soybean | 1560     | Amravati  | 78.990  | 21.130  | 79.005  | 21.145
+Yavatmal-Cotton-06     | Cotton  | 2100     | Yavatmal  | 79.020  | 21.130  | 79.035  | 21.145
+Buldhana-Wheat-07      | Wheat   | 870      | Buldhana  | 78.960  | 21.160  | 78.975  | 21.175
+Washim-Rice-08         | Rice    | 1430     | Washim    | 78.990  | 21.160  | 79.005  | 21.175
+
+Insert each as a PostGIS Polygon:
+  ST_GeomFromText(
+    'POLYGON((lon_min lat_min, lon_max lat_min,
+              lon_max lat_max, lon_min lat_max,
+              lon_min lat_min))',
+    4326
+  )
+
+═══════════════════════════════════════════════════════════
+SECTION 7 — ORM MODELS (app/models/field.py)
+═══════════════════════════════════════════════════════════
+
+Write this file exactly:
+
+from sqlalchemy import (
+    Column, Integer, String, Float,
+    Date, Text, ForeignKey, DateTime, Boolean
+)
+from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import JSONB
+from geoalchemy2 import Geometry
+from datetime import datetime
+from app.database import Base
+
+
+class Field(Base):
+    __tablename__ = "fields"
+
+    field_id   = Column(Integer, primary_key=True, index=True)
+    zone_name  = Column(String(100), nullable=False)
+    crop_type  = Column(String(50))
+    area_ha    = Column(Float)
+    district   = Column(String(100))
+    state      = Column(String(50), default="Maharashtra")
+    confidence = Column(Float, default=0.91)
+    geom       = Column(Geometry("POLYGON", srid=4326))
+
+    timeseries = relationship("Timeseries", back_populates="field",
+                              cascade="all, delete-orphan")
+    advisories = relationship("Advisory",   back_populates="field",
+                              cascade="all, delete-orphan")
+    tile_cache = relationship("TileCache",  back_populates="field",
+                              cascade="all, delete-orphan")
+
+
+class Timeseries(Base):
+    __tablename__ = "timeseries"
+
+    ts_id        = Column(Integer, primary_key=True, index=True)
+    field_id     = Column(Integer, ForeignKey("fields.field_id"), nullable=False)
+    obs_date     = Column(Date, nullable=False)
+    ndvi         = Column(Float)
+    ndwi         = Column(Float)
+    evi          = Column(Float)
+    growth_stage = Column(String(30))
+    stress_class = Column(String(20))
+    deficit_mm   = Column(Float)
+    computed_at  = Column(DateTime, default=datetime.utcnow)
+
+    field = relationship("Field", back_populates="timeseries")
+
+
+class Advisory(Base):
+    __tablename__ = "advisories"
+
+    advisory_id       = Column(Integer, primary_key=True, index=True)
+    field_id          = Column(Integer, ForeignKey("fields.field_id"), nullable=False)
+    issue_date        = Column(Date, nullable=False)
+    advisory_status   = Column(String(30))
+    timeline_days     = Column(Integer)
+    water_amount_mm   = Column(Float)
+    duration_hours    = Column(Float)
+    best_time         = Column(String(50))
+    advisory_text     = Column(Text)
+    risk_level        = Column(String(20))
+    soil_moisture_pct = Column(Float)
+    rainfall_mm       = Column(Float)
+    days_since_rain   = Column(Integer)
+
+    field = relationship("Field", back_populates="advisories")
+
+
+class TileCache(Base):
+    """
+    Caches GEE tile URLs so the 30-60 second GEE computation
+    only happens once. Subsequent requests return instantly.
+    tile_url expires after CACHE_TTL_SECONDS (default 24 hours).
+    """
+    __tablename__ = "tile_cache"
+
+    cache_id    = Column(Integer, primary_key=True, index=True)
+    field_id    = Column(Integer, ForeignKey("fields.field_id"),
+                         nullable=True)  # null = region-level tile
+    cache_key   = Column(String(300), nullable=False, unique=True)
+    tile_url    = Column(Text, nullable=False)
+    attribution = Column(Text)
+    layer_name  = Column(String(100))
+    expires_at  = Column(DateTime, nullable=False)
+    created_at  = Column(DateTime, default=datetime.utcnow)
+
+    field = relationship("Field", back_populates="tile_cache")
+
+═══════════════════════════════════════════════════════════
+SECTION 8 — GEE AUTH (app/gee/auth.py)
+═══════════════════════════════════════════════════════════
+
+Wraps authenticate.py logic.
+Initializes GEE ONCE at app startup.
+Supports both user credentials and service account.
+
+Write this file exactly:
+
+import ee
+import logging
+from app.config import settings
+
+logger = logging.getLogger(__name__)
+_gee_initialized = False
+
+
+def initialize_gee():
+    global _gee_initialized
+    if _gee_initialized:
+        return True
+
+    project = settings.gee_project_id
+
+    try:
+        if settings.gee_service_account and settings.gee_key_file:
+            # Production: service account auth
+            credentials = ee.ServiceAccountCredentials(
+                settings.gee_service_account,
+                settings.gee_key_file,
+            )
+            ee.Initialize(credentials=credentials, project=project)
+            logger.info("GEE initialized via service account")
+        else:
+            # Development: user credential auth
+            # Requires running authenticate.py once beforehand
+            # Same as the existing authenticate.py script
+            ee.Initialize(project=project)
+            logger.info(f"GEE initialized — project: {project}")
+
+        _gee_initialized = True
+        return True
+
+    except Exception as e:
+        logger.error(f"GEE initialization failed: {e}")
+        if not settings.use_mock_gee:
+            raise RuntimeError(
+                f"GEE failed and USE_MOCK_GEE=false. "
+                f"Run authenticate.py first. Error: {e}"
+            )
+        logger.warning(
+            "USE_MOCK_GEE=true — continuing without GEE. "
+            "Mock tile URLs will be returned."
+        )
+        return False
+
+
+def is_gee_ready() -> bool:
+    return _gee_initialized
+
+═══════════════════════════════════════════════════════════
+SECTION 9 — GEE TILE GENERATOR (app/gee/tiles.py)
+═══════════════════════════════════════════════════════════
+
+This is the CORE of the backend.
+Replicates exactly what get_satellite.py and crop.py do
+but instead of m.to_html(), returns the tile URL as a string.
+
+The tile URL format GEE returns is:
+  https://earthengine.googleapis.com/v1/projects/
+  <project>/maps/<map_id>/tiles/{z}/{x}/{y}
+
+This is exactly what the HTML files contained.
+We just return it as JSON instead of embedding in HTML.
+
+Write this file exactly:
+
+import ee
+import logging
+import math
+from app.gee.auth import is_gee_ready
+from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+GEE_ATTRIBUTION = (
+    "Map tiles by Google Earth Engine | "
+    "Imagery © Copernicus/ESA Sentinel-2"
+)
+
+# ─── MOCK TILE URLS ────────────────────────────────────
+# Used when USE_MOCK_GEE=true or GEE is unavailable.
+# These are OpenStreetMap-based styled tiles that visually
+# approximate what the real GEE tiles look like.
+# The frontend will show these until real GEE tiles are ready.
+
+MOCK_TILES = {
+    "ndvi": {
+        "tile_url":    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        "attribution": "Mock NDVI — OpenStreetMap",
+        "layer_name":  "NDVI (Mock)",
+        "is_mock":     True,
+    },
+    "crop-type": {
+        "tile_url":    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        "attribution": "Mock Crop Types — OpenStreetMap",
+        "layer_name":  "Crop Types (Mock)",
+        "is_mock":     True,
+    },
+    "stress": {
+        "tile_url":    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        "attribution": "Mock Stress — OpenStreetMap",
+        "layer_name":  "Moisture Stress (Mock)",
+        "is_mock":     True,
+    },
+}
+
+
+def _get_tile_url(ee_image, viz_params: dict) -> str:
+    """
+    Core helper — gets tile URL from a GEE image.
+    This is what geemap does internally before to_html().
+    Returns the full tile URL template string.
+    """
+    map_id_dict = ee_image.getMapId(viz_params)
+    # map_id_dict contains 'tile_fetcher' with the URL
+    tile_url = map_id_dict['tile_fetcher'].url_format
+    return tile_url
+
+
+def get_ndvi_tiles(
+    lon_min: float = 72.6,
+    lat_min: float = 15.6,
+    lon_max: float = 80.9,
+    lat_max: float = 22.0,
+    date_start: str = "2023-06-01",
+    date_end:   str = "2023-11-30",
+) -> dict:
+    """
+    Replicates get_satellite.py exactly.
+    Returns tile URL instead of saving HTML.
+
+    Original script used:
+      ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+      .filterBounds(maha)
+      .filterDate('2023-06-01', '2023-11-30')
+      .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
+      .median()
+      normalizedDifference(['B8', 'B4'])  → NDVI
+
+    Viz params from get_satellite.py:
+      min: 0, max: 0.8
+      palette: ['brown', 'yellow', 'lightgreen', 'darkgreen']
+    """
+    if not is_gee_ready():
+        return MOCK_TILES["ndvi"]
+
+    try:
+        region = ee.Geometry.Rectangle([lon_min, lat_min, lon_max, lat_max])
+
+        # EXACT same logic as get_satellite.py
+        images = (
+            ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
+            .filterBounds(region)
+            .filterDate(date_start, date_end)
+            .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 20))
+        )
+        clean = images.median()
+        ndvi  = clean.normalizedDifference(["B8", "B4"])
+
+        # EXACT same viz params as get_satellite.py
+        viz = {
+            "min":     0,
+            "max":     0.8,
+            "palette": ["brown", "yellow", "lightgreen", "darkgreen"],
+        }
+
+        tile_url = _get_tile_url(ndvi, viz)
+
+        return {
+            "tile_url":    tile_url,
+            "attribution": GEE_ATTRIBUTION,
+            "layer_name":  "NDVI - Crop Health",
+            "is_mock":     False,
+            "date_start":  date_start,
+            "date_end":    date_end,
+            "region": {
+                "lon_min": lon_min, "lat_min": lat_min,
+                "lon_max": lon_max, "lat_max": lat_max,
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"GEE NDVI tile generation failed: {e}")
+        return MOCK_TILES["ndvi"]
+
+
+def get_crop_type_tiles(
+    lon_min: float = 73.9,
+    lat_min: float = 29.5,
+    lon_max: float = 76.9,
+    lat_max: float = 32.5,
+    kharif_start: str = "2023-06-01",
+    kharif_end:   str = "2023-09-30",
+    rabi_start:   str = "2023-10-01",
+    rabi_end:     str = "2024-01-31",
+) -> dict:
+    """
+    Replicates crop.py exactly.
+    Returns crop classification tile URL instead of HTML map.
+
+    EXACT crop rules from crop.py (do not change the numbers):
+      Rice      : kharif_ndvi > 0.5 AND kharif_ndwi > 0.2  → code 1
+      Wheat     : rabi_ndvi > 0.5                           → code 2
+      Cotton    : kharif_ndvi (0.4, 0.6] AND ndwi < 0.2    → code 3
+      Sugarcane : kharif_ndvi > 0.7 AND rabi_ndvi > 0.6    → code 4
+      Maize     : kharif_ndvi (0.5, 0.7]                    → code 5
+      Fallow    : everything else                           → code 0
+
+    EXACT palette from crop.py:
+      0 Fallow    #8B4513
+      1 Rice      #00CED1
+      2 Wheat     #FFD700
+      3 Cotton    #FFFFE0
+      4 Sugarcane #228B22
+      5 Maize     #FFA500
+    """
+    if not is_gee_ready():
+        return MOCK_TILES["crop-type"]
+
+    try:
+        region = ee.Geometry.Rectangle([lon_min, lat_min, lon_max, lat_max])
+
+        # KHARIF — exact same as crop.py
+        kharif = (
+            ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
+            .filterBounds(region)
+            .filterDate(kharif_start, kharif_end)
+            .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 20))
+            .median()
+        )
+        kharif_ndvi = kharif.normalizedDifference(["B8", "B4"])
+        kharif_ndwi = kharif.normalizedDifference(["B8", "B11"])
+
+        # RABI — exact same as crop.py
+        rabi = (
+            ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
+            .filterBounds(region)
+            .filterDate(rabi_start, rabi_end)
+            .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 20))
+            .median()
+        )
+        rabi_ndvi = rabi.normalizedDifference(["B8", "B4"])
+
+        # EXACT classification expression from crop.py
+        crop_map = kharif_ndvi.expression(
+            "(kharif_ndvi > 0.5 && kharif_ndwi > 0.2) ? 1"
+            ": (rabi_ndvi > 0.5) ? 2"
+            ": (kharif_ndvi > 0.4 && kharif_ndvi <= 0.6 && kharif_ndwi < 0.2) ? 3"
+            ": (kharif_ndvi > 0.7 && rabi_ndvi > 0.6) ? 4"
+            ": (kharif_ndvi > 0.5 && kharif_ndvi <= 0.7) ? 5"
+            ": 0",
+            {
+                "kharif_ndvi": kharif_ndvi,
+                "kharif_ndwi": kharif_ndwi,
+                "rabi_ndvi":   rabi_ndvi,
+            },
+        ).rename("Crop")
+
+        # EXACT viz params from crop.py
+        viz = {
+            "min":     0,
+            "max":     5,
+            "palette": [
+                "#8B4513",   # 0 Fallow
+                "#00CED1",   # 1 Rice
+                "#FFD700",   # 2 Wheat
+                "#FFFFE0",   # 3 Cotton
+                "#228B22",   # 4 Sugarcane
+                "#FFA500",   # 5 Maize
+            ],
+        }
+
+        tile_url = _get_tile_url(crop_map, viz)
+
+        return {
+            "tile_url":    tile_url,
+            "attribution": GEE_ATTRIBUTION,
+            "layer_name":  "Crop Classification",
+            "is_mock":     False,
+            "legend": {
+                "0": {"label": "Fallow",    "color": "#8B4513"},
+                "1": {"label": "Rice",      "color": "#00CED1"},
+                "2": {"label": "Wheat",     "color": "#FFD700"},
+                "3": {"label": "Cotton",    "color": "#FFFFE0"},
+                "4": {"label": "Sugarcane", "color": "#228B22"},
+                "5": {"label": "Maize",     "color": "#FFA500"},
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"GEE crop tile generation failed: {e}")
+        return MOCK_TILES["crop-type"]
+
+
+def get_stress_tiles(
+    lon_min: float = 72.6,
+    lat_min: float = 15.6,
+    lon_max: float = 80.9,
+    lat_max: float = 22.0,
+    date_start: str = "2023-06-01",
+    date_end:   str = "2023-11-30",
+) -> dict:
+    """
+    Derives moisture stress from NDWI.
+    NDWI = (B8 - B11) / (B8 + B11)
+    Low NDWI = drought stress.
+
+    Stress palette:
+      High NDWI (wet, no stress) → green  #639922
+      Medium NDWI (mild stress)  → yellow #EF9F27
+      Low NDWI (moderate stress) → orange #BA7517
+      Very low NDWI (severe)     → red    #E24B4A
+    """
+    if not is_gee_ready():
+        return MOCK_TILES["stress"]
+
+    try:
+        region = ee.Geometry.Rectangle([lon_min, lat_min, lon_max, lat_max])
+
+        images = (
+            ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
+            .filterBounds(region)
+            .filterDate(date_start, date_end)
+            .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 20))
+        )
+        composite = images.median()
+        ndwi = composite.normalizedDifference(["B8", "B11"])
+
+        # Invert NDWI so high value = high stress (for intuitive coloring)
+        stress_index = ndwi.multiply(-1).add(1).divide(2)
+
+        viz = {
+            "min":     0,
+            "max":     1,
+            "palette": [
+                "#639922",   # Low stress (wet)
+                "#EF9F27",   # Mild stress
+                "#BA7517",   # Moderate stress
+                "#E24B4A",   # Severe stress (dry)
+            ],
+        }
+
+        tile_url = _get_tile_url(stress_index, viz)
+
+        return {
+            "tile_url":    tile_url,
+            "attribution": GEE_ATTRIBUTION,
+            "layer_name":  "Moisture Stress",
+            "is_mock":     False,
+            "legend": {
+                "none":     {"label": "No Stress",       "color": "#639922"},
+                "mild":     {"label": "Mild Stress",     "color": "#EF9F27"},
+                "moderate": {"label": "Moderate Stress", "color": "#BA7517"},
+                "severe":   {"label": "Severe Stress",   "color": "#E24B4A"},
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"GEE stress tile generation failed: {e}")
+        return MOCK_TILES["stress"]
+
+═══════════════════════════════════════════════════════════
+SECTION 10 — GEE STRESS + ADVISORY LOGIC (app/gee/stress.py)
+═══════════════════════════════════════════════════════════
+
+Computes numeric stress values and advisory text.
+Called by field_service to populate timeseries and advisories.
+
+Write this file exactly:
+
+import math
+
+GROWTH_STAGES = ["Sowing", "Vegetative", "Flowering", "Maturity"]
+
+# Stage sensitivity from ISRO blueprint
+# Flowering stage is most sensitive to water stress
+STAGE_SENSITIVITY = {
+    "Sowing":     0.8,
+    "Vegetative": 1.0,
+    "Flowering":  1.4,
+    "Maturity":   0.9,
+}
+
+# FAO-56 Kc values per stage (lookup table, not learned)
+KC_TABLE = {
+    "Sowing":     0.4,
+    "Vegetative": 0.8,
+    "Flowering":  1.15,
+    "Maturity":   0.7,
+}
+
+
+def detect_growth_stage(ndvi: float, day_of_season: int) -> str:
+    if day_of_season < 20 or ndvi < 0.25:
+        return "Sowing"
+    elif ndvi < 0.45:
+        return "Vegetative"
+    elif ndvi >= 0.45 and day_of_season < 90:
+        return "Flowering"
+    else:
+        return "Maturity"
+
+
+def compute_stress(ndvi: float, ndwi: float,
+                   growth_stage: str) -> dict:
+    """
+    Stage-conditioned stress index.
+    Key insight from ISRO blueprint: same NDVI drop at
+    Flowering is weighted 1.4x vs Vegetative.
+    """
+    ndvi_min, ndvi_max = 0.1, 0.85
+    vci = max(0.0, min(1.0,
+              (ndvi - ndvi_min) / (ndvi_max - ndvi_min)))
+    smi = max(0.0, min(1.0, (ndwi + 0.5)))
+
+    weight = STAGE_SENSITIVITY.get(growth_stage, 1.0)
+    cwsi   = weight * (1.0 - (0.6 * vci + 0.4 * smi))
+    cwsi   = max(0.0, min(1.0, cwsi))
+
+    if cwsi < 0.25:
+        stress_class = "None"
+    elif cwsi < 0.50:
+        stress_class = "Mild"
+    elif cwsi < 0.75:
+        stress_class = "Moderate"
+    else:
+        stress_class = "Severe"
+
+    return {
+        "stress_class":  stress_class,
+        "stress_index":  round(cwsi, 3),
+        "vci":           round(vci, 3),
+    }
+
+
+def compute_deficit(ndvi: float, ndwi: float,
+                    growth_stage: str,
+                    et0_mm: float = 5.0) -> dict:
+    """FAO-56 simplified dual crop coefficient."""
+    kc         = KC_TABLE.get(growth_stage, 0.8)
+    etc_mm     = kc * et0_mm * 8
+    soil_mm    = max(0.0, ndwi * 30)
+    deficit_mm = max(0.0, etc_mm - soil_mm)
+    return {
+        "deficit_mm": round(deficit_mm, 1),
+        "etc_mm":     round(etc_mm, 1),
+        "kc":         round(kc, 2),
+    }
+
+
+def generate_advisory(deficit_mm: float,
+                      stress_class: str,
+                      growth_stage: str,
+                      rainfall_forecast_mm: float = 0.0) -> dict:
+    """
+    Rule-based irrigation advisory.
+    Plain English output — the AI Irrigation Copilot.
+    Transparent, explainable, not a black box.
+    """
+    if stress_class == "Severe" or deficit_mm > 40:
+        status        = "Irrigate Now"
+        timeline_days = 1
+        water_mm      = round(deficit_mm * 1.1, 1)
+        risk          = "critical"
+        text = (
+            f"Critical water deficit of {deficit_mm:.0f}mm detected "
+            f"with severe stress at {growth_stage} stage. "
+            f"Irrigate immediately to prevent yield loss."
+        )
+    elif stress_class == "Moderate" or deficit_mm > 20:
+        if rainfall_forecast_mm > 15:
+            status        = "No Action"
+            timeline_days = 7
+            water_mm      = 0.0
+            risk          = "medium"
+            text = (
+                f"Moderate deficit of {deficit_mm:.0f}mm detected but "
+                f"{rainfall_forecast_mm:.0f}mm rainfall is forecast. "
+                f"Monitor — irrigate only if rain does not arrive."
+            )
+        else:
+            status        = "Irrigate Soon"
+            timeline_days = 3
+            water_mm      = round(deficit_mm * 1.05, 1)
+            risk          = "high"
+            text = (
+                f"Water deficit of {deficit_mm:.0f}mm with moderate "
+                f"stress at {growth_stage} stage. "
+                f"Irrigate within {timeline_days} days with "
+                f"{water_mm:.0f}mm to maintain yield."
+            )
+    else:
+        status        = "No Action"
+        timeline_days = 7
+        water_mm      = 0.0
+        risk          = "low"
+        text = (
+            f"Crop water balance is adequate. "
+            f"Deficit: {deficit_mm:.0f}mm. "
+            f"No irrigation needed this week."
+        )
+
+    return {
+        "advisory_status":   status,
+        "timeline_days":     timeline_days,
+        "water_amount_mm":   water_mm,
+        "duration_hours":    round(water_mm / 10, 1),
+        "best_time":         "4:00–8:00 AM",
+        "advisory_text":     text,
+        "risk_level":        risk,
+    }
+
+═══════════════════════════════════════════════════════════
+SECTION 11 — PYDANTIC SCHEMAS (app/schemas/)
+═══════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────
+app/schemas/tiles.py
+─────────────────────────────────────────────────────────
+
+from pydantic import BaseModel
+from typing import Optional, Dict, Any
+
+class TileResponse(BaseModel):
+    tile_url:    str
+    attribution: str
+    layer_name:  str
+    is_mock:     bool = False
+    legend:      Optional[Dict[str, Any]] = None
+    date_start:  Optional[str] = None
+    date_end:    Optional[str] = None
+
+─────────────────────────────────────────────────────────
+app/schemas/field.py
+─────────────────────────────────────────────────────────
+
+from pydantic import BaseModel
+from datetime import date
+from typing import Optional
+
+class TimeseriesRow(BaseModel):
+    obs_date:     date
+    ndvi:         Optional[float] = None
+    ndwi:         Optional[float] = None
+    evi:          Optional[float] = None
+    growth_stage: Optional[str]   = None
+    stress_class: Optional[str]   = None
+    deficit_mm:   Optional[float] = None
+
+    class Config:
+        from_attributes = True
+
+class AdvisoryResponse(BaseModel):
+    field_id:          int
+    zone_name:         str
+    crop_type:         Optional[str]   = None
+    area_ha:           Optional[float] = None
+    growth_stage:      Optional[str]   = None
+    ndvi:              Optional[float] = None
+    stress_class:      Optional[str]   = None
+    soil_moisture_pct: Optional[float] = None
+    rainfall_mm:       Optional[float] = None
+    days_since_rain:   Optional[int]   = None
+    advisory_status:   Optional[str]   = None
+    timeline_days:     Optional[int]   = None
+    water_amount_mm:   Optional[float] = None
+    duration_hours:    Optional[float] = None
+    best_time:         Optional[str]   = None
+    advisory_text:     Optional[str]   = None
+
+    class Config:
+        from_attributes = True
+
+─────────────────────────────────────────────────────────
+app/schemas/alerts.py
+─────────────────────────────────────────────────────────
+
+from pydantic import BaseModel
+from typing import Optional
+
+class AlertResponse(BaseModel):
+    id:         int
+    field_id:   int
+    zone_name:  str
+    risk_level: str
+    message:    Optional[str] = None
+    created_at: Optional[str] = None
+
+═══════════════════════════════════════════════════════════
+SECTION 12 — SERVICES (app/services/)
+═══════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────
+app/services/tile_service.py
+─────────────────────────────────────────────────────────
+
+Calls GEE tile generators and caches results in DB.
+GEE takes 30-60 seconds — this cache makes it instant
+after the first call.
+
+from sqlalchemy.orm import Session
+from datetime import datetime, timedelta
+import logging
+
+from app.models.field import TileCache
+from app.gee import tiles as gee_tiles
+from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+def _cache_key(layer: str, params: dict) -> str:
+    parts = [layer] + [f"{k}={v}" for k, v in sorted(params.items())]
+    return ":".join(parts)
+
+
+def _get_cached_tile(db: Session, key: str) -> dict | None:
+    row = (
+        db.query(TileCache)
+        .filter(
+            TileCache.cache_key == key,
+            TileCache.expires_at > datetime.utcnow(),
+        )
+        .first()
+    )
+    if row:
+        logger.info(f"Cache HIT for {key}")
+        return {
+            "tile_url":    row.tile_url,
+            "attribution": row.attribution,
+            "layer_name":  row.layer_name,
+            "is_mock":     False,
+            "from_cache":  True,
+        }
+    return None
+
+
+def _save_tile_cache(db: Session, key: str,
+                     result: dict, layer_name: str):
+    if not settings.cache_tiles:
+        return
+    expires = datetime.utcnow() + timedelta(
+        seconds=settings.cache_ttl_seconds
+    )
+    existing = db.query(TileCache).filter(
+        TileCache.cache_key == key
+    ).first()
+
+    if existing:
+        existing.tile_url    = result["tile_url"]
+        existing.attribution = result.get("attribution", "")
+        existing.layer_name  = layer_name
+        existing.expires_at  = expires
+    else:
+        db.add(TileCache(
+            cache_key   = key,
+            tile_url    = result["tile_url"],
+            attribution = result.get("attribution", ""),
+            layer_name  = layer_name,
+            expires_at  = expires,
+        ))
+    db.commit()
+
+
+def get_ndvi_tile(db: Session,
+                  date_start: str = "2023-06-01",
+                  date_end:   str = "2023-11-30") -> dict:
+    key    = _cache_key("ndvi", {"s": date_start, "e": date_end})
+    cached = _get_cached_tile(db, key)
+    if cached:
+        return cached
+
+    result = gee_tiles.get_ndvi_tiles(
+        date_start=date_start,
+        date_end=date_end,
+    )
+    if not result.get("is_mock"):
+        _save_tile_cache(db, key, result, "NDVI")
+    return result
+
+
+def get_crop_type_tile(db: Session,
+                       kharif_start: str = "2023-06-01",
+                       kharif_end:   str = "2023-09-30",
+                       rabi_start:   str = "2023-10-01",
+                       rabi_end:     str = "2024-01-31") -> dict:
+    key    = _cache_key("crop", {
+        "ks": kharif_start, "ke": kharif_end,
+        "rs": rabi_start,   "re": rabi_end,
+    })
+    cached = _get_cached_tile(db, key)
+    if cached:
+        return cached
+
+    result = gee_tiles.get_crop_type_tiles(
+        kharif_start=kharif_start,
+        kharif_end=kharif_end,
+        rabi_start=rabi_start,
+        rabi_end=rabi_end,
+    )
+    if not result.get("is_mock"):
+        _save_tile_cache(db, key, result, "Crop Types")
+    return result
+
+
+def get_stress_tile(db: Session,
+                    date_start: str = "2023-06-01",
+                    date_end:   str = "2023-11-30") -> dict:
+    key    = _cache_key("stress", {"s": date_start, "e": date_end})
+    cached = _get_cached_tile(db, key)
+    if cached:
+        return cached
+
+    result = gee_tiles.get_stress_tiles(
+        date_start=date_start,
+        date_end=date_end,
+    )
+    if not result.get("is_mock"):
+        _save_tile_cache(db, key, result, "Moisture Stress")
+    return result
+
+─────────────────────────────────────────────────────────
+app/services/field_service.py
+─────────────────────────────────────────────────────────
+
+from sqlalchemy.orm import Session
+from sqlalchemy import desc, text
+from datetime import date, timedelta
+import math
+import logging
+
+from app.models.field import Field, Timeseries, Advisory
+from app.gee.stress import (
+    detect_growth_stage,
+    compute_stress,
+    compute_deficit,
+    generate_advisory,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _mock_timeseries(field_id: int, limit: int = 60) -> list:
+    """
+    Generates realistic mock timeseries when GEE is not available.
+    Seeded by field_id so each field gets different values.
+    """
+    today  = date(2024, 10, 15)
+    result = []
+    seed   = field_id * 0.3
+
+    for i in range(limit):
+        d    = today - timedelta(days=(limit - 1 - i))
+        t    = i / (limit - 1)
+        ndvi = round(
+            0.35 + 0.35 * math.sin(math.pi * t * (1 + seed * 0.1))
+            + 0.05 * math.sin(t * 20),
+            4,
+        )
+        ndwi  = round(ndvi * 0.55 + 0.05, 4)
+        stage = detect_growth_stage(ndvi, i)
+        stress = compute_stress(ndvi, ndwi, stage)
+        deficit = compute_deficit(ndvi, ndwi, stage)
+
+        result.append({
+            "obs_date":     d,
+            "ndvi":         ndvi,
+            "ndwi":         ndwi,
+            "evi":          round(ndvi * 0.85, 4),
+            "growth_stage": stage,
+            "stress_class": stress["stress_class"],
+            "deficit_mm":   deficit["deficit_mm"],
+        })
+    return result
+
+
+def get_timeseries(db: Session,
+                   field_id: int,
+                   limit: int = 60) -> list:
+    """
+    Returns timeseries rows.
+    Checks DB first. If empty, generates mock data
+    and persists it so future calls are instant.
+    """
+    rows = (
+        db.query(Timeseries)
+        .filter(Timeseries.field_id == field_id)
+        .order_by(desc(Timeseries.obs_date))
+        .limit(limit)
+        .all()
+    )
+    if rows:
+        return list(reversed(rows))
+
+    # Not in DB — generate and persist
+    field = db.query(Field).filter(
+        Field.field_id == field_id
+    ).first()
+    if not field:
+        return []
+
+    mock_rows = _mock_timeseries(field_id, limit)
+    orm_rows  = []
+    for row in mock_rows:
+        ts = Timeseries(
+            field_id     = field_id,
+            obs_date     = row["obs_date"],
+            ndvi         = row["ndvi"],
+            ndwi         = row["ndwi"],
+            evi          = row["evi"],
+            growth_stage = row["growth_stage"],
+            stress_class = row["stress_class"],
+            deficit_mm   = row["deficit_mm"],
+        )
+        db.add(ts)
+        orm_rows.append(ts)
+
+    db.commit()
+    for r in orm_rows:
+        db.refresh(r)
+    return orm_rows
+
+
+def get_advisory(db: Session, field_id: int) -> dict | None:
+    field = db.query(Field).filter(
+        Field.field_id == field_id
+    ).first()
+    if not field:
+        return None
+
+    # Ensure timeseries exists
+    get_timeseries(db, field_id)
+
+    latest_ts = (
+        db.query(Timeseries)
+        .filter(Timeseries.field_id == field_id)
+        .order_by(desc(Timeseries.obs_date))
+        .first()
+    )
+
+    ndvi         = latest_ts.ndvi         if latest_ts else 0.5
+    ndwi         = latest_ts.ndwi         if latest_ts else 0.2
+    stress_class = latest_ts.stress_class if latest_ts else "Mild"
+    deficit_mm   = latest_ts.deficit_mm   if latest_ts else 20.0
+    growth_stage = latest_ts.growth_stage if latest_ts else "Vegetative"
+
+    latest_adv = (
+        db.query(Advisory)
+        .filter(Advisory.field_id == field_id)
+        .order_by(desc(Advisory.issue_date))
+        .first()
+    )
+
+    if not latest_adv:
+        adv_data = generate_advisory(deficit_mm, stress_class,
+                                     growth_stage)
+        new_adv  = Advisory(
+            field_id          = field_id,
+            issue_date        = date.today(),
+            advisory_status   = adv_data["advisory_status"],
+            timeline_days     = adv_data["timeline_days"],
+            water_amount_mm   = adv_data["water_amount_mm"],
+            duration_hours    = adv_data["duration_hours"],
+            best_time         = adv_data["best_time"],
+            advisory_text     = adv_data["advisory_text"],
+            risk_level        = adv_data["risk_level"],
+            soil_moisture_pct = round(max(20, min(80, ndwi * 100 + 42)), 1),
+            rainfall_mm       = 8.0,
+            days_since_rain   = 5,
+        )
+        db.add(new_adv)
+        db.commit()
+        db.refresh(new_adv)
+        latest_adv = new_adv
+
+    return {
+        "field_id":          field.field_id,
+        "zone_name":         field.zone_name,
+        "crop_type":         field.crop_type,
+        "area_ha":           field.area_ha,
+        "growth_stage":      growth_stage,
+        "ndvi":              ndvi,
+        "stress_class":      stress_class,
+        "soil_moisture_pct": latest_adv.soil_moisture_pct,
+        "rainfall_mm":       latest_adv.rainfall_mm,
+        "days_since_rain":   latest_adv.days_since_rain,
+        "advisory_status":   latest_adv.advisory_status,
+        "timeline_days":     latest_adv.timeline_days,
+        "water_amount_mm":   latest_adv.water_amount_mm,
+        "duration_hours":    latest_adv.duration_hours,
+        "best_time":         latest_adv.best_time,
+        "advisory_text":     latest_adv.advisory_text,
+    }
+
+─────────────────────────────────────────────────────────
+app/services/alert_service.py
+─────────────────────────────────────────────────────────
+
+from sqlalchemy.orm import Session
+from sqlalchemy import desc
+from app.models.field import Advisory, Field
+
+
+def get_alerts(db: Session) -> list:
+    rows = (
+        db.query(Advisory, Field.zone_name)
+        .join(Field, Advisory.field_id == Field.field_id)
+        .filter(Advisory.risk_level.in_(
+            ["critical", "high", "medium"]
+        ))
+        .order_by(Advisory.risk_level, desc(Advisory.issue_date))
+        .limit(20)
+        .all()
+    )
+
+    result = []
+    for adv, zone_name in rows:
+        result.append({
+            "id":         adv.advisory_id,
+            "field_id":   adv.field_id,
+            "zone_name":  zone_name,
+            "risk_level": adv.risk_level,
+            "message":    adv.advisory_text,
+            "created_at": (
+                adv.issue_date.isoformat()
+                if adv.issue_date else None
+            ),
+        })
+    return result
+
+═══════════════════════════════════════════════════════════
+SECTION 13 — ROUTERS (app/routers/)
+═══════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────
+app/routers/tiles.py
+─────────────────────────────────────────────────────────
+
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.schemas.tiles import TileResponse
+from app.services import tile_service
+
+router = APIRouter(prefix="/tiles", tags=["tiles"])
+
+@router.get("/ndvi", response_model=TileResponse)
+def get_ndvi_tile(
+    date_start: str = Query(default="2023-06-01",
+                            description="YYYY-MM-DD"),
+    date_end:   str = Query(default="2023-11-30",
+                            description="YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns GEE tile URL for NDVI layer.
+    Same data as get_satellite.py and maharashtra_ndvi.html
+    but as a JSON tile URL instead of an HTML file.
+    """
+    return tile_service.get_ndvi_tile(db, date_start, date_end)
+
+
+@router.get("/crop-type", response_model=TileResponse)
+def get_crop_type_tile(
+    kharif_start: str = Query(default="2023-06-01"),
+    kharif_end:   str = Query(default="2023-09-30"),
+    rabi_start:   str = Query(default="2023-10-01"),
+    rabi_end:     str = Query(default="2024-01-31"),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns GEE tile URL for crop classification layer.
+    Same data as crop.py and punjab_crop_types.html.
+    """
+    return tile_service.get_crop_type_tile(
+        db, kharif_start, kharif_end, rabi_start, rabi_end
+    )
+
+
+@router.get("/stress", response_model=TileResponse)
+def get_stress_tile(
+    date_start: str = Query(default="2023-06-01"),
+    date_end:   str = Query(default="2023-11-30"),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns GEE tile URL for moisture stress layer.
+    Derived from NDWI — same satellite data source.
+    """
+    return tile_service.get_stress_tile(db, date_start, date_end)
+
+─────────────────────────────────────────────────────────
+app/routers/fields.py
+─────────────────────────────────────────────────────────
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List
+from app.database import get_db
+from app.schemas.field import TimeseriesRow, AdvisoryResponse
+from app.services import field_service
+
+router = APIRouter(prefix="/fields", tags=["fields"])
+
+@router.get("/{field_id}/timeseries",
+            response_model=List[TimeseriesRow])
+def get_timeseries(field_id: int,
+                   db: Session = Depends(get_db)):
+    rows = field_service.get_timeseries(db, field_id)
+    if not rows:
+        raise HTTPException(status_code=404,
+                            detail="Field not found")
+    return rows
+
+
+@router.get("/{field_id}/advisory",
+            response_model=AdvisoryResponse)
+def get_advisory(field_id: int,
+                 db: Session = Depends(get_db)):
+    result = field_service.get_advisory(db, field_id)
+    if not result:
+        raise HTTPException(status_code=404,
+                            detail="Field not found")
+    return result
+
+─────────────────────────────────────────────────────────
+app/routers/alerts.py
+─────────────────────────────────────────────────────────
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+from typing import List
+from app.database import get_db
+from app.schemas.alerts import AlertResponse
+from app.services import alert_service
+
+router = APIRouter(prefix="/alerts", tags=["alerts"])
+
+@router.get("", response_model=List[AlertResponse])
+def get_alerts(db: Session = Depends(get_db)):
+    return alert_service.get_alerts(db)
+
+═══════════════════════════════════════════════════════════
+SECTION 14 — MAIN.PY
+═══════════════════════════════════════════════════════════
+
+Write this file exactly:
+
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+from sqlalchemy import text
+
+from app.config import settings, ALLOWED_ORIGINS_LIST
+from app.database import engine, Base, SessionLocal
+from app.gee.auth import initialize_gee, is_gee_ready
+from app.routers import tiles, fields, alerts
+from app.models.field import Field
+
+
+def seed_fields(db):
+    """
+    Inserts 8 sample Maharashtra fields on first run.
+    Skips if fields already exist.
+    """
+    count = db.query(Field).count()
+    if count > 0:
+        return
+
+    fields_data = [
+        ("Vidarbha-Rice-01",    "Rice",    2340, "Nagpur",
+         78.960, 21.100, 78.975, 21.115),
+        ("Wardha-Cotton-02",    "Cotton",  1850, "Wardha",
+         78.990, 21.100, 79.005, 21.115),
+        ("Amravati-Wheat-03",   "Wheat",   1200, "Amravati",
+         79.020, 21.100, 79.035, 21.115),
+        ("Nagpur-Soybean-04",   "Soybean",  980, "Nagpur",
+         78.960, 21.130, 78.975, 21.145),
+        ("Amravati-Soybean-05", "Soybean", 1560, "Amravati",
+         78.990, 21.130, 79.005, 21.145),
+        ("Yavatmal-Cotton-06",  "Cotton",  2100, "Yavatmal",
+         79.020, 21.130, 79.035, 21.145),
+        ("Buldhana-Wheat-07",   "Wheat",    870, "Buldhana",
+         78.960, 21.160, 78.975, 21.175),
+        ("Washim-Rice-08",      "Rice",    1430, "Washim",
+         78.990, 21.160, 79.005, 21.175),
+    ]
+
+    for zone, crop, area, district, x1, y1, x2, y2 in fields_data:
+        wkt = (
+            f"POLYGON(({x1} {y1},{x2} {y1},"
+            f"{x2} {y2},{x1} {y2},{x1} {y1}))"
+        )
+        db.execute(
+            text(
+                "INSERT INTO fields "
+                "(zone_name,crop_type,area_ha,district,state,"
+                "confidence,geom) VALUES "
+                "(:zone,:crop,:area,:district,'Maharashtra',"
+                "0.91,ST_GeomFromText(:wkt,4326))"
+            ),
+            {
+                "zone":     zone,
+                "crop":     crop,
+                "area":     area,
+                "district": district,
+                "wkt":      wkt,
+            },
+        )
+    db.commit()
+    print(f"Seeded {len(fields_data)} fields")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 1. Create all tables (safe to run multiple times)
+    Base.metadata.create_all(bind=engine)
+
+    # 2. Seed fields if empty
+    db = SessionLocal()
+    try:
+        seed_fields(db)
+    finally:
+        db.close()
+
+    # 3. Initialize GEE
+    initialize_gee()
+
+    yield
+    # Shutdown — nothing to clean up
+
+
+app = FastAPI(
+    title="CropWise AI API",
+    description="Backend for CropWise AI — ISRO Hackathon Challenge 6",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+# CORS — allow only the proxy server
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS_LIST,
+    allow_credentials=True,
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
+
+# Internal key validation
+# The proxy server injects X-Internal-Key on every request
+# FastAPI rejects anything without it
+@app.middleware("http")
+async def verify_internal_key(request: Request, call_next):
+    # Skip check on health + docs
+    open_paths = ["/health", "/docs", "/openapi.json",
+                  "/redoc"]
+    if request.url.path in open_paths:
+        return await call_next(request)
+
+    key = request.headers.get("X-Internal-Key", "")
+    if key != settings.internal_api_key:
+        raise HTTPException(status_code=403,
+                            detail="Forbidden")
+    return await call_next(request)
+
+# Register routers
+app.include_router(tiles.router)
+app.include_router(fields.router)
+app.include_router(alerts.router)
+
+@app.get("/health")
+def health():
+    return {
+        "status":    "ok",
+        "version":   "1.0.0",
+        "gee_ready": is_gee_ready(),
+    }
+
+═══════════════════════════════════════════════════════════
+SECTION 15 — FRONTEND CHANGES NEEDED
+═══════════════════════════════════════════════════════════
+
+The frontend master prompt used GeoJSON polygon layers.
+Now that the backend returns GEE tile URLs, the MapPanel
+needs ONE small change to use real satellite tiles.
+
+In src/components/map/MapPanel.jsx add this alongside
+the existing GeoJSON layer — it fetches the tile URL
+from the backend and adds it as a Leaflet TileLayer:
+
+─────────────────────────────────────────────────────────
+New hook: src/hooks/useTileLayer.js
+─────────────────────────────────────────────────────────
+
+import { useQuery } from '@tanstack/react-query'
+import api from '../api/axiosInstance'
+import { USE_MOCK } from '../mocks'
+
+const LAYER_ENDPOINTS = {
+  'crop-type': '/tiles/crop-type',
+  'stress':    '/tiles/stress',
+  'ndvi':      '/tiles/ndvi',
+}
+
+export const useTileLayer = (activeLayer) =>
+  useQuery({
+    queryKey:  ['tileLayer', activeLayer],
+    queryFn:   async () => {
+      if (USE_MOCK) return null  // use GeoJSON polygons in mock mode
+      const endpoint = LAYER_ENDPOINTS[activeLayer]
+      if (!endpoint) return null
+      const res = await api.get(endpoint)
+      return res.data  // { tile_url, attribution, layer_name }
+    },
+    staleTime: 60 * 60 * 1000,  // 1 hour — tile URLs last 24h
+    enabled:   !USE_MOCK,
+  })
+
+─────────────────────────────────────────────────────────
+In MapPanel.jsx add this inside MapContainer:
+─────────────────────────────────────────────────────────
+
+import { TileLayer as LeafletTileLayer } from 'react-leaflet'
+import { useTileLayer } from '../../hooks/useTileLayer'
+
+// Inside the component:
+const { data: tileData } = useTileLayer(activeLayer)
+
+// Inside MapContainer, add after the base TileLayer:
+{tileData?.tile_url && (
+  <LeafletTileLayer
+    url={tileData.tile_url}
+    attribution={tileData.attribution}
+    opacity={0.75}
+  />
+)}
+
+// Keep the existing GeoJSON polygon layer for field
+// selection (click events). The GEE tile layer provides
+// the satellite imagery. Both layers work together:
+// GEE tile = visual satellite data
+// GeoJSON polygons = transparent, for click events only
+
+// Make GeoJSON polygons semi-transparent when tileData exists:
+style={(feature) => ({
+  fillColor:   getColor(feature, activeLayer),
+  fillOpacity: tileData?.tile_url ? 0.0 : 0.65,  // hide fill when GEE tile active
+  color:       '#ffffff',
+  weight:      selectedFieldId === feature.properties.field_id ? 3 : 1.5,
+})}
+
+═══════════════════════════════════════════════════════════
+SECTION 16 — HOW TO RUN (step by step)
+═══════════════════════════════════════════════════════════
+
+STEP 1 — One-time GEE authentication
+(skip if already done — authenticate.py already ran):
+  cd cropwise-backend
+  python -c "import ee; ee.Authenticate()"
+
+STEP 2 — Set up your PostgreSQL database
+Choose one option:
+  A) Local:    psql → CREATE DATABASE cropwise_db → enable postgis
+  B) Supabase: create project → SQL editor → CREATE EXTENSION postgis
+  C) Neon:     create project → SQL editor → CREATE EXTENSION postgis
+
+STEP 3 — Configure environment
+  cp .env.example .env
+  Open .env and fill in:
+    DATABASE_URL  → paste your PostgreSQL connection string here
+    INTERNAL_API_KEY → generate: python -c "import secrets; print(secrets.token_hex(32))"
+    USE_MOCK_GEE  → set true to start, false when GEE is confirmed working
+
+STEP 4 — Install and run
+  python -m venv venv
+  source venv/bin/activate    # Mac/Linux
+  venv\Scripts\activate       # Windows
+  pip install -r requirements.txt
+  uvicorn main:app --reload --port 8000
+
+  On startup the app will:
+    ✓ Create all tables automatically
+    ✓ Seed 8 Maharashtra fields automatically
+    ✓ Initialize GEE (or log warning if USE_MOCK_GEE=true)
+
+STEP 5 — Verify it works
+  curl http://localhost:8000/health
+  Expected: {"status":"ok","version":"1.0.0","gee_ready":true}
+
+  curl -H "X-Internal-Key: YOUR_KEY" \
+       http://localhost:8000/tiles/ndvi
+  Expected: {"tile_url":"https://earthengine.googleapis.com/..."}
+
+  curl -H "X-Internal-Key: YOUR_KEY" \
+       http://localhost:8000/fields/1/advisory
+  Expected: advisory JSON for field 1
+
+STEP 6 — Connect the proxy
+  In cropwise-ui/proxy-server/.env:
+    BACKEND_URL=http://localhost:8000
+    INTERNAL_API_KEY=same value as backend .env
+
+STEP 7 — Start everything together
+  Terminal 1: uvicorn main:app --reload --port 8000
+  Terminal 2: cd cropwise-ui && npm start
+
+  Or from cropwise-ui root: npm start
+  (starts both Vite + proxy via concurrently)
+
+═══════════════════════════════════════════════════════════
+SECTION 17 — API ENDPOINTS REFERENCE
+═══════════════════════════════════════════════════════════
+
+All endpoints require header: X-Internal-Key: <your_key>
+Except /health which is open.
+
+GET /health
+  Returns: { status, version, gee_ready }
+
+GET /tiles/ndvi?date_start=2023-06-01&date_end=2023-11-30
+  Returns: { tile_url, attribution, layer_name, is_mock }
+  What it does: generates NDVI tile URL from GEE
+                same data as maharashtra_ndvi.html
+
+GET /tiles/crop-type
+GET /tiles/crop-type?kharif_start=...&kharif_end=...&rabi_start=...&rabi_end=...
+  Returns: { tile_url, attribution, layer_name, legend, is_mock }
+  What it does: generates crop classification tile URL
+                same logic as crop.py and punjab_crop_types.html
+
+GET /tiles/stress?date_start=2023-06-01&date_end=2023-11-30
+  Returns: { tile_url, attribution, layer_name, legend, is_mock }
+  What it does: generates moisture stress tile URL from NDWI
+
+GET /fields/{id}/timeseries
+  Returns: array of { obs_date, ndvi, ndwi, evi,
+                       growth_stage, stress_class, deficit_mm }
+
+GET /fields/{id}/advisory
+  Returns: { field_id, zone_name, crop_type, area_ha,
+             growth_stage, ndvi, stress_class,
+             soil_moisture_pct, rainfall_mm, days_since_rain,
+             advisory_status, timeline_days, water_amount_mm,
+             duration_hours, best_time, advisory_text }
+
+GET /alerts
+  Returns: array of { id, field_id, zone_name,
+                       risk_level, message, created_at }
+
+═══════════════════════════════════════════════════════════
+SECTION 18 — FINAL CHECKLIST
+═══════════════════════════════════════════════════════════
+
+□ uvicorn main:app starts without errors
+□ Tables created automatically on startup
+□ 8 fields seeded automatically on first run
+□ GET /health returns { status: "ok", gee_ready: true/false }
+□ GET /tiles/ndvi returns a tile_url string
+   (even with USE_MOCK_GEE=true — returns mock tile URL)
+□ GET /tiles/crop-type returns tile_url + legend
+□ GET /tiles/stress returns tile_url + legend
+□ GET /fields/1/timeseries returns 60 rows of JSON
+□ GET /fields/1/advisory returns advisory with advisory_text
+   as a plain English sentence — not a number or code
+□ GET /alerts returns list with risk_level and message
+□ All endpoints without X-Internal-Key return 403
+□ /health works without X-Internal-Key
+□ Second call to /tiles/ndvi returns instantly (from cache)
+□ .env is in .gitignore — never committed
+□ DATABASE_URL in .env is the only thing user needs to paste
+□ Crop threshold numbers in app/gee/tiles.py exactly match
+   the numbers in the original crop.py script
+□ No geemap import anywhere — we use earthengine-api directly
+□ No .to_html() call anywhere
