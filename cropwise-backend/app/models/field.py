@@ -1,9 +1,9 @@
+from geoalchemy2 import Geometry
 from sqlalchemy import (
     Column, Integer, String, Float,
     Date, Text, ForeignKey, DateTime
 )
 from sqlalchemy.orm import relationship
-from geoalchemy2 import Geometry
 from datetime import datetime
 from app.database import Base
 
@@ -18,13 +18,17 @@ class Field(Base):
     district   = Column(String(100))
     state      = Column(String(50), default="Maharashtra")
     confidence = Column(Float, default=0.91)
-    geom       = Column(Geometry("POLYGON", srid=4326))
+    lon_min    = Column(Float)
+    lat_min    = Column(Float)
+    lon_max    = Column(Float)
+    lat_max    = Column(Float)
+    geom       = Column(Geometry(geometry_type="POLYGON", srid=4326))
 
     timeseries = relationship("Timeseries", back_populates="field",
                               cascade="all, delete-orphan")
-    advisories = relationship("Advisory",   back_populates="field",
+    advisories = relationship("Advisory", back_populates="field",
                               cascade="all, delete-orphan")
-    tile_cache = relationship("TileCache",  back_populates="field",
+    tile_cache = relationship("TileCache", back_populates="field",
                               cascade="all, delete-orphan")
 
 
@@ -66,16 +70,10 @@ class Advisory(Base):
 
 
 class TileCache(Base):
-    """
-    Caches GEE tile URLs so the 30-60 second GEE computation
-    only happens once. Subsequent requests return instantly.
-    tile_url expires after CACHE_TTL_SECONDS (default 24 hours).
-    """
     __tablename__ = "tile_cache"
 
     cache_id    = Column(Integer, primary_key=True, index=True)
-    field_id    = Column(Integer, ForeignKey("fields.field_id"),
-                         nullable=True)  # null = region-level tile
+    field_id    = Column(Integer, ForeignKey("fields.field_id"), nullable=True)
     cache_key   = Column(String(300), nullable=False, unique=True)
     tile_url    = Column(Text, nullable=False)
     attribution = Column(Text)

@@ -103,10 +103,10 @@ app.add_middleware(
 # FastAPI rejects anything without it
 @app.middleware("http")
 async def verify_internal_key(request: Request, call_next):
-    # Skip check on health + docs
-    open_paths = ["/health", "/docs", "/openapi.json",
-                  "/redoc"]
-    if request.url.path in open_paths:
+    # Skip check for public/browser paths that should not require the internal header
+    path = request.url.path
+    public_paths = ["/health", "/docs", "/openapi.json", "/redoc", "/favicon.ico"]
+    if path in public_paths or path.startswith("/docs/") or path.startswith("/redoc/"):
         return await call_next(request)
 
     key = request.headers.get("X-Internal-Key", "")
