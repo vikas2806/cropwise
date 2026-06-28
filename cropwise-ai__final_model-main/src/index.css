@@ -1,0 +1,271 @@
+@import "tailwindcss";
+
+/* Base Reset & Font */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  font-family: 'Inter', -apple-system, sans-serif;
+  background: #050d0a !important;
+  color: #e2e8f0 !important;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background:
+    radial-gradient(ellipse 80% 60% at 10% 0%, rgba(16,185,89,0.07) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 90% 100%, rgba(5,150,105,0.06) 0%, transparent 50%),
+    linear-gradient(180deg, #050d0a 0%, #06100c 50%, #050d0a 100%) !important;
+  min-height: 100vh;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+::-webkit-scrollbar-thumb { background: rgba(16,185,89,0.3); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(16,185,89,0.5); }
+
+/* Float animation */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Pulse ring animation */
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgba(16,185,89,0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(16,185,89,0); }
+  100% { box-shadow: 0 0 0 0 rgba(16,185,89,0); }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 2s ease-in-out infinite;
+}
+
+/* Leaflet map fixes */
+.leaflet-container {
+  background: #050d0a !important;
+  font-family: 'Inter', sans-serif !important;
+}
+
+.leaflet-control-layers {
+  background: rgba(10, 25, 18, 0.95) !important;
+  border: 1px solid rgba(16, 185, 89, 0.2) !important;
+  border-radius: 12px !important;
+  color: #e2e8f0 !important;
+  padding: 10px !important;
+}
+
+.leaflet-control-layers-toggle {
+  background-color: rgba(10, 25, 18, 0.95) !important;
+  border: 1px solid rgba(16, 185, 89, 0.2) !important;
+}
+
+.leaflet-control-layers label {
+  color: #e2e8f0 !important;
+}
+
+.leaflet-control-zoom a {
+  background: rgba(10, 25, 18, 0.95) !important;
+  border: 1px solid rgba(16, 185, 89, 0.2) !important;
+  color: #34d399 !important;
+}
+
+.leaflet-control-zoom a:hover {
+  background: rgba(16, 185, 89, 0.15) !important;
+}
+
+/* Code block styling */
+.code-block {
+  background: rgba(10, 25, 18, 0.9);
+  border: 1px solid rgba(16, 185, 89, 0.15);
+  border-radius: 12px;
+  padding: 16px 20px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  line-height: 1.7;
+  color: #94a3b8;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.code-block .comment {
+  color: #4a5568;
+}
+
+.code-block .keyword {
+  color: #c084fc;
+}
+
+.code-block .function {
+  color: #60a5fa;
+}
+
+.code-block .string {
+  color: #34d399;
+}
+
+/* Custom tab styling */
+.tab-button {
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+  background: transparent;
+  color: rgba(148, 163, 184, 0.7);
+  border: none;
+  cursor: pointer;
+}
+
+.tab-button:hover {
+  color: rgba(148, 163, 184, 0.9);
+}
+
+.tab-button.active {
+  background: linear-gradient(135deg, rgba(16,185,89,0.2), rgba(5,150,105,0.15));
+  color: #34d399;
+  box-shadow: inset 0 0 0 1px rgba(16,185,89,0.25);
+}
+
+/* Range slider styling */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 8px;
+  border-radius: 4px;
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: #10b981;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(16, 185, 89, 0.4);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: #10b981;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 6px rgba(16, 185, 89, 0.4);
+}
+
+/* Select styling */
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%2310b981' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+  background-position: right 8px center;
+  background-repeat: no-repeat;
+  background-size: 16px;
+  padding-right: 32px;
+  cursor: pointer;
+}
+
+select:focus {
+  outline: none;
+  border-color: rgba(16, 185, 89, 0.4);
+}
+
+/* Date input styling */
+input[type="date"] {
+  color-scheme: dark;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.7) sepia(1) saturate(5) hue-rotate(100deg);
+  cursor: pointer;
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 1024px) {
+  .leaflet-container {
+    height: 400px !important;
+  }
+}
+
+/* Animation for dashboard entrance */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.5s ease-out forwards;
+}
+
+/* Staggered animation delays */
+.stagger-1 { animation-delay: 0.1s; }
+.stagger-2 { animation-delay: 0.2s; }
+.stagger-3 { animation-delay: 0.3s; }
+.stagger-4 { animation-delay: 0.4s; }
+
+/* Gradient text helper */
+.gradient-text {
+  background: linear-gradient(135deg, #34d399 0%, #10b981 50%, #6ee7b7 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glow effects */
+.glow-green {
+  box-shadow: 0 0 20px rgba(16, 185, 89, 0.3);
+}
+
+.glow-green-subtle {
+  box-shadow: 0 0 10px rgba(16, 185, 89, 0.15);
+}
+
+/* Card hover states */
+.card-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-hover:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+}
+
+/* Focus states for accessibility */
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid rgba(16, 185, 89, 0.5);
+  outline-offset: 2px;
+}
+
+/* Improve readability on small screens */
+@media (max-width: 640px) {
+  body {
+    font-size: 14px;
+  }
+  
+  .text-3xl {
+    font-size: 1.5rem;
+  }
+  
+  .text-2xl {
+    font-size: 1.25rem;
+  }
+}
